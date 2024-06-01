@@ -4,13 +4,17 @@ use axum::{
 };
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
+use dotenvy::dotenv;
+
+mod charges;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
     tracing_subscriber::fmt::init();
     // build our application with a route
     let app = Router::new()
-        // `GET /` goes to `root`
+        .nest("/v1", charges::get_routes())
         .route("/", get(root))
         .layer(
             ServiceBuilder::new()
