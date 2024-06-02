@@ -1,154 +1,8 @@
-use crate::charges::{
-    charge::CreateChargeRequestPayload,
-    //
-};
-use openssl::{hash::MessageDigest, pkey::PKey, rsa::Rsa, sign::Signer};
-use serde::{Deserialize, Serialize};
+use super::config::{AlipayApiType, AlipayPcDirectConfig};
+use super::mapi::MapiRequestPayload;
+use super::openapi::OpenApiRequestPayload;
+use crate::charges::charge::CreateChargeRequestPayload;
 use serde_json::json;
-
-#[derive(Debug)]
-enum AlipayApiType {
-    MAPI,
-    OPENAPI,
-}
-
-impl<'de> Deserialize<'de> for AlipayApiType {
-    fn deserialize<D>(deserializer: D) -> Result<AlipayApiType, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = i32::deserialize(deserializer)?;
-        match s {
-            1 => Ok(AlipayApiType::MAPI),
-            2 => Ok(AlipayApiType::OPENAPI),
-            _ => Err(serde::de::Error::custom(format!(
-                "unknown alipay_api_type: {}",
-                s
-            ))),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-enum AlipaySignType {
-    #[serde(rename = "rsa")]
-    RSA,
-    #[serde(rename = "rsa2")]
-    RSA256,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct AlipayPcDirectConfig {
-    alipay_pid: String,
-    alipay_security_key: String,
-    alipay_account: String,
-
-    alipay_version: AlipayApiType,
-    alipay_app_id: String,
-
-    alipay_sign_type: AlipaySignType,
-    alipay_private_key: String,
-    alipay_public_key: String,
-    alipay_private_key_rsa2: String,
-    alipay_public_key_rsa2: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AlipayPcDirectMapiRequest {
-    service: String,
-    _input_charset: String,
-    return_url: String,
-    notify_url: String,
-    partner: String,
-    out_trade_no: String,
-    subject: String,
-    body: String,
-    total_fee: String,
-    payment_type: String,
-    seller_id: String,
-    it_b_pay: String,
-    sign: String,
-    sign_type: String,
-}
-
-impl AlipayPcDirectMapiRequest {
-    fn get_sorted_sign_source(&self) -> String {
-        // 这里 deserialize 不会出问题
-        let v = serde_json::to_value(&self).unwrap();
-        let m: std::collections::HashMap<String, String> = serde_json::from_value(v).unwrap();
-        let mut query_list = Vec::<String>::new();
-        m.iter().for_each(|(k, v)| {
-            if !v.is_empty() && k != "sign" && k != "sign_type" {
-                let query = format!("{}={}", k, v.trim());
-                query_list.push(query);
-            }
-        });
-        query_list.sort();
-        query_list.join("&")
-    }
-
-    fn sign_rsa(&mut self, private_key: &str) -> Result<String, openssl::error::ErrorStack> {
-        let sign_sorted_source = self.get_sorted_sign_source();
-        tracing::info!("sign_source: {}", sign_sorted_source);
-        let keypair = Rsa::private_key_from_pem(private_key.as_bytes())?;
-        let keypair = PKey::from_rsa(keypair)?;
-        let mut signer = Signer::new(MessageDigest::sha1(), &keypair)?;
-        signer.update(sign_sorted_source.as_bytes())?;
-        let signature_bytes = signer.sign_to_vec()?;
-        let signature = data_encoding::BASE64.encode(&signature_bytes);
-        tracing::info!("signture: {}", &signature);
-        self.sign = signature.clone();
-        Ok(signature)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AlipayPcDirectOpenApiRequest {
-    app_id: String,
-    method: String,
-    format: String,
-    charset: String,
-    sign_type: String,
-    timestamp: String,
-    version: String,
-    biz_content: String,
-    notify_url: String,
-    return_url: String,
-    sign: String,
-    channel_url: String,
-}
-
-impl AlipayPcDirectOpenApiRequest {
-    fn get_sorted_sign_source(&self) -> String {
-        // 这里 deserialize 不会出问题
-        let v = serde_json::to_value(&self).unwrap();
-        let m: std::collections::HashMap<String, String> = serde_json::from_value(v).unwrap();
-        let mut query_list = Vec::<String>::new();
-        m.iter().for_each(|(k, v)| {
-            if !v.is_empty() && k != "sign" && k != "channel_url" {
-                let query = format!("{}={}", k, v.trim());
-                query_list.push(query);
-            }
-        });
-        query_list.sort();
-        query_list.join("&")
-    }
-
-    fn sign_rsa2(&mut self, private_key: &str) -> Result<String, openssl::error::ErrorStack> {
-        let sign_sorted_source = self.get_sorted_sign_source();
-        tracing::info!("sign_source: {}", sign_sorted_source);
-        let keypair = Rsa::private_key_from_pem(private_key.as_bytes())?;
-        let keypair = PKey::from_rsa(keypair)?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &keypair)?;
-        signer.update(sign_sorted_source.as_bytes())?;
-        let signature_bytes = signer.sign_to_vec()?;
-        let signature = data_encoding::BASE64.encode(&signature_bytes);
-        tracing::info!("signture: {}", &signature);
-        self.sign = signature.clone();
-        Ok(signature)
-    }
-}
 
 pub struct AlipayPcDirect {}
 
@@ -181,7 +35,8 @@ impl AlipayPcDirect {
                 return Err(());
             }
         };
-        let mut alipay_pc_direct_req = AlipayPcDirectMapiRequest {
+        let mut mapi_request_payload = MapiRequestPayload {
+            channel_url: String::from("https://mapi.alipay.com/gateway.do"),
             service: String::from("create_direct_pay_by_user"),
             _input_charset: String::from("utf-8"),
             return_url,
@@ -197,12 +52,12 @@ impl AlipayPcDirect {
             sign: String::from(""),
             sign_type: String::from("RSA"),
         };
-        alipay_pc_direct_req
+        mapi_request_payload
             .sign_rsa(&config.alipay_private_key)
             .map_err(|e| {
                 tracing::error!("create_credential: {}", e);
             })?;
-        Ok(json!(alipay_pc_direct_req))
+        Ok(json!(mapi_request_payload))
     }
 
     fn create_openapi_credential(
@@ -235,7 +90,7 @@ impl AlipayPcDirect {
             "timeout_express": timeout_express,
             "passback_params": "ch_101240602725900042240014"  // TODO: 这里要换成 charge id
         });
-        let mut alipay_pc_direct_req = AlipayPcDirectOpenApiRequest {
+        let mut openapi_request_payload = OpenApiRequestPayload {
             app_id: config.alipay_app_id.clone(),
             method: String::from("alipay.trade.page.pay"),
             format: String::from("JSON"),
@@ -244,33 +99,32 @@ impl AlipayPcDirect {
             timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             version: String::from("1.0"),
             biz_content: biz_content.to_string(),
-            // "biz_content": "{\"body\":\"testproduct123-体积:30ML,重量:3mg\",\"subject\":\"鬼骨孖的店铺\",\"out_trade_no\":\"85020240602194128029\",\"total_amount\":\"11.00\",\"product_code\":\"FAST_INSTANT_TRADE_PAY\",\"extend_params\":{\"sys_service_provider_id\":\"2088421557811318\"},\"timeout_express\":\"30m\",\"passback_params\":\"ch_101240602725900042240014\"}",
             return_url,
             notify_url: notify_url.to_string(),
             sign: String::from(""),
             channel_url: String::from("https://openapi.alipay.com/gateway.do"),
         };
-        alipay_pc_direct_req
+        openapi_request_payload
             .sign_rsa2(&config.alipay_private_key_rsa2)
             .map_err(|e| {
                 tracing::error!("create_credential: {}", e);
             })?;
-        Ok(json!(alipay_pc_direct_req))
+        Ok(json!(openapi_request_payload))
     }
 
     pub fn create_credential(
         req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
-        let config = AlipayPcDirect::load_config().map_err(|e| {
+        let config = Self::load_config().map_err(|e| {
             tracing::error!("error loading alipay_pc_direct config: {}", e);
         })?;
         match config.alipay_version {
             AlipayApiType::MAPI => {
-                AlipayPcDirect::create_mapi_credential(req_payload, notify_url, config)
+                Self::create_mapi_credential(req_payload, notify_url, config)
             }
             AlipayApiType::OPENAPI => {
-                AlipayPcDirect::create_openapi_credential(req_payload, notify_url, config)
+                Self::create_openapi_credential(req_payload, notify_url, config)
             }
         }
     }

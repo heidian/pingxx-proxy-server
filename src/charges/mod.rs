@@ -6,10 +6,10 @@ use axum::{
 };
 use serde_json::json;
 
-mod charge;
 mod alipay;
+mod charge;
 
-use charge::CreateChargeRequestPayload;
+use charge::{CreateChargeRequestPayload, PaymentChannel};
 
 async fn test() -> &'static str {
     "ok"
@@ -23,13 +23,28 @@ async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCo
     })?;
     let notify_url = "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
     tracing::info!("create_charge: {:?}", req_payload);
-    let alipay_pc_direct_req =
-        alipay::AlipayPcDirect::create_credential(&req_payload, &notify_url).map_err(
-            |_| {
-                tracing::error!("create_credential failed");
-                StatusCode::INTERNAL_SERVER_ERROR
-            },
-        )?;
+
+    let credential_object = match req_payload.channel {
+        PaymentChannel::AlipayPcDirect => {
+            alipay::AlipayPcDirect::create_credential(&req_payload, &notify_url)
+        }
+        PaymentChannel::AlipayWap => {
+            alipay::AlipayWap::create_credential(&req_payload, &notify_url)
+        }
+        _ => {
+            tracing::error!("create_charge: unsupported channel");
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+    let credential_object = credential_object.map_err(|_| {
+        tracing::error!("create_credential failed");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let mut credential = json!({
+        "object": "credential",
+    });
+    credential["alipay_pc_direct"] = credential_object;
 
     let charge = json!({
         "id": "ch_101240601691280343040013",
@@ -65,10 +80,7 @@ async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCo
         "failure_code": null,
         "failure_msg": null,
         "metadata": {},
-        "credential": {
-          "object": "credential",
-          "alipay_pc_direct": alipay_pc_direct_req,
-        },
+        "credential": credential,
         "description": null
     });
     Ok(Json(charge))
