@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use rand::Rng;
 use serde_json::json;
 
 mod alipay;
@@ -11,18 +12,32 @@ mod charge;
 
 use charge::{CreateChargeRequestPayload, PaymentChannel};
 
-async fn test() -> &'static str {
-    "ok"
+async fn test() -> String {
+    let charge_id = {
+        let mut rng = rand::thread_rng();
+        let timestamp = chrono::Utc::now().timestamp_millis();
+        let number: u64 = rng.gen_range(10000000000..100000000000);
+        format!("ch_{}{}", timestamp, number)
+    };
+    charge_id
 }
 
 async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCode> {
-    // tracing::info!("create_charge: {}", body);
+    tracing::info!("create_charge: {}", body);
     let req_payload: CreateChargeRequestPayload = serde_json::from_str(&body).map_err(|e| {
-        tracing::error!("create_charge: {}", e);
+        tracing::error!("error parsing create_charge request payload: {:?}", e);
         StatusCode::BAD_REQUEST
     })?;
-    let notify_url = "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
-    tracing::info!("create_charge: {:?}", req_payload);
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let charge_id = {
+        let mut rng = rand::thread_rng();
+        let number: u64 = rng.gen_range(10000000000..100000000000);
+        format!("ch_{}{}", timestamp, number)
+    };
+
+    let charge_notify_url_root = std::env::var("CHARGE_NOTIFY_URL_ROOT").unwrap();
+    let notify_url = format!("{}{}", charge_notify_url_root, charge_id);
+    // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
 
     let credential_object = match req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
@@ -36,53 +51,57 @@ async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCo
             return Err(StatusCode::BAD_REQUEST);
         }
     };
+
     let credential_object = credential_object.map_err(|_| {
         tracing::error!("create_credential failed");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let mut credential = json!({
-        "object": "credential",
-    });
-    credential["alipay_pc_direct"] = credential_object;
-
-    let charge = json!({
-        "id": "ch_101240601691280343040013",
+    let mut charge = json!({
+        "id": charge_id,
         "object": "charge",
-        "created": 1717238707,
+        "created": timestamp,
         "livemode": true,
         "paid": false,
-        "refunded": false,
+        // "refunded": false,
         "reversed": false,
-        "app": "app_qnnT0KyzvbfDaT0e",
-        "channel": "alipay_pc_direct",
-        "order_no": "98520240601184136264",
-        "client_ip": "192.168.65.1",
-        "amount": 800,
-        "amount_settle": 800,
-        "currency": "cny",
-        "subject": "鬼骨孖的店铺",
-        "body": "宝蓝色绑带高跟凉鞋",
-        "extra": {
-          "success_url": "https://dxd1234.heidianer.com/order/be4570fbd7bf99d17f3b68589a5a46c2a7b302c8?payment_status=success"
-        },
         "time_paid": null,
-        "time_expire": 1717240296,
         "time_settle": null,
         "transaction_no": null,
-        "refunds": {
-          "object": "list",
-          "url": "/v1/charges/ch_101240601691280343040013/refunds",
-          "has_more": false,
-          "data": []
-        },
-        "amount_refunded": 0,
+        // "refunds": {
+        //     "object": "list",
+        //     "url": "/v1/charges/ch_101240601691280343040013/refunds",
+        //     "has_more": false,
+        //     "data": []
+        // },
+        // "amount_refunded": 0,
         "failure_code": null,
         "failure_msg": null,
         "metadata": {},
-        "credential": credential,
         "description": null
     });
+
+    charge.as_object_mut().unwrap().extend({
+        let req_payload_obj = serde_json::to_value(&req_payload).map_err(|e| {
+            tracing::error!("error serializing create_charge response: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        req_payload_obj.as_object().unwrap().clone()
+    });
+
+    charge["credential"] = {
+        let mut credential = json!({
+            "object": "credential",
+        });
+        let key = serde_json::to_value(&req_payload.channel)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_owned();
+        credential[key] = credential_object;
+        credential
+    };
+
     Ok(Json(charge))
 }
 

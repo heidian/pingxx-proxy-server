@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub enum PaymentChannel {
     #[serde(rename = "alipay_pc_direct")]
     AlipayPcDirect,
@@ -10,18 +10,18 @@ pub enum PaymentChannel {
     WxPub,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct ChargeExtra {
     pub success_url: Option<String>,
     pub cancel_url: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PingxxApp {
     pub id: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct CreateChargeRequestPayload {
     pub order_no: String,
     pub amount: u32,
