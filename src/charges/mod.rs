@@ -6,8 +6,8 @@ use axum::{
 };
 use serde_json::json;
 
-mod charge;
 mod alipay;
+mod charge;
 
 use charge::CreateChargeRequestPayload;
 
@@ -21,11 +21,15 @@ async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCo
         tracing::error!("create_charge: {}", e);
         StatusCode::BAD_REQUEST
     })?;
+    let notify_url = "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
     tracing::info!("create_charge: {:?}", req_payload);
-    let alipay_pc_direct_req = alipay::AlipayPcDirectRequest::create_credential(&req_payload).map_err(|_| {
-        tracing::error!("create_credential failed");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let alipay_pc_direct_req =
+        alipay::AlipayPcDirectRequest::create_credential(&req_payload, &notify_url).map_err(
+            |_| {
+                tracing::error!("create_credential failed");
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
 
     let charge = json!({
         "id": "ch_101240601691280343040013",
