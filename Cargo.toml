@@ -1,3 +1,6 @@
+[workspace]
+members = ["prisma-cli"]
+
 [package]
 name = "pingxx-proxy-server"
 version = "0.1.0"
@@ -19,3 +22,5 @@ tower = "0.4.13"
 tower-http = { version = "0.5.2", features = ["trace"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11" }
+prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11" }
