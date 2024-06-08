@@ -48,7 +48,7 @@ model Order {
     app               App      @relation(fields: [appId], references: [id], onDelete: Cascade)
     subAppId          Int
     subApp            SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
-    orderId           String
+    orderId           String   @unique
     uid               String
     merchant_order_no String
     status            String
@@ -66,6 +66,4 @@ model Order {
     metadata          Json
     createdAt         DateTime @default(now())
     updatedAt         DateTime @updatedAt
-
-    @@unique([subAppId, orderId])
 }
