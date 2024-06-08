@@ -139,29 +139,7 @@ async fn create_charge(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let result = OrderResponsePayload {
-        id: order.order_id.clone(),
-        object: String::from("order"),
-        created: order.created_at.timestamp() as i32,
-        app: app.key.clone(),
-        receipt_app: sub_app.key.clone(),
-        service_app: sub_app.key.clone(),
-        uid: order.uid,
-        merchant_order_no: order.merchant_order_no,
-        status: order.status,
-        paid: order.paid,
-        refunded: order.refunded,
-        amount: order.amount,
-        amount_paid: order.amount_paid,
-        amount_refunded: order.amount_refunded,
-        client_ip: order.client_ip,
-        subject: order.subject,
-        body: order.body,
-        currency: order.currency,
-        time_paid: None,
-        time_expire: order.time_expire,
-        metadata: order.metadata,
-    };
+    let result = OrderResponsePayload::new(&order, &app, &sub_app);
 
     let mut result = serde_json::to_value(result).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);

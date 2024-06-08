@@ -43,6 +43,39 @@ pub struct OrderResponsePayload {
     pub metadata: serde_json::Value,
 }
 
+impl OrderResponsePayload {
+    pub fn new(
+        order: &crate::prisma::order::Data,
+        app: &crate::prisma::app::Data,
+        sub_app: &crate::prisma::sub_app::Data,
+    ) -> Self {
+        Self {
+            id: order.order_id.clone(),
+            object: String::from("order"),
+            created: order.created_at.timestamp() as i32,
+            app: app.key.clone(),
+            receipt_app: sub_app.key.clone(),
+            service_app: sub_app.key.clone(),
+            uid: order.uid.clone(),
+            merchant_order_no: order.merchant_order_no.clone(),
+            status: order.status.clone(),
+            paid: order.paid,
+            refunded: order.refunded,
+            amount: order.amount,
+            amount_paid: order.amount_paid,
+            amount_refunded: order.amount_refunded,
+            client_ip: order.client_ip.clone(),
+            subject: order.subject.clone(),
+            body: order.body.clone(),
+            currency: order.currency.clone(),
+            time_paid: None,
+            time_expire: order.time_expire,
+            metadata: order.metadata.clone(),
+        }
+    }
+
+}
+
 async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, StatusCode> {
     tracing::info!("create_order: {}", body);
     let req_payload: CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
