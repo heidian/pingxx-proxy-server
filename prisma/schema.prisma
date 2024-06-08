@@ -66,4 +66,29 @@ model Order {
     metadata          Json
     createdAt         DateTime @default(now())
     updatedAt         DateTime @updatedAt
+    charges           Charge[]
+}
+
+model Charge {
+    id         Int      @id @default(autoincrement())
+    orderId    Int
+    order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    chargeId   String   @unique
+    isValid    Boolean
+    channel    String
+    amount     Int
+    extra      Json
+    credential Json
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+}
+
+model ChargeNotifyHistory {
+    id        Int      @id @default(autoincrement())
+    chargeId  String
+    data      Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([chargeId])
 }
