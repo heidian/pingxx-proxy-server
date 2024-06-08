@@ -47,4 +47,3 @@ impl OpenApiRequestPayload {
         Ok(signature)
     }
 }
-

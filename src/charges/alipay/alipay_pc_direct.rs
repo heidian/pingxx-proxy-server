@@ -1,23 +1,14 @@
+use super::super::charge::CreateChargeRequestPayload;
 use super::config::{AlipayApiType, AlipayPcDirectConfig};
 use super::mapi::MapiRequestPayload;
 use super::openapi::OpenApiRequestPayload;
-use crate::charges::charge::CreateChargeRequestPayload;
-use crate::orders::Order;
 use serde_json::json;
 
 pub struct AlipayPcDirect {}
 
 impl AlipayPcDirect {
-    fn load_config() -> Result<AlipayPcDirectConfig, serde_json::error::Error> {
-        let pingxx_params = std::env::var("PINGXX_PARAMS").unwrap_or_default();
-        let pingxx_params: serde_json::Value = serde_json::from_str(&pingxx_params)?;
-        let config: AlipayPcDirectConfig =
-            serde_json::from_value(pingxx_params["alipay_pc_direct"].to_owned())?;
-        Ok(config)
-    }
-
     fn create_mapi_credential(
-        order: &Order,
+        order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
         config: AlipayPcDirectConfig,
@@ -28,7 +19,7 @@ impl AlipayPcDirect {
         };
         let total_fee = format!("{:.2}", charge_req_payload.charge_amount as f64 / 100.0);
         let it_b_pay = {
-            let now = chrono::Utc::now().timestamp() as u32;
+            let now = chrono::Utc::now().timestamp() as i32;
             if order.time_expire > now {
                 let seconds = order.time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
@@ -63,7 +54,7 @@ impl AlipayPcDirect {
     }
 
     fn create_openapi_credential(
-        order: &Order,
+        order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
         config: AlipayPcDirectConfig,
@@ -74,7 +65,7 @@ impl AlipayPcDirect {
         };
         let total_amount = format!("{:.2}", charge_req_payload.charge_amount as f64 / 100.0);
         let timeout_express = {
-            let now = chrono::Utc::now().timestamp() as u32;
+            let now = chrono::Utc::now().timestamp() as i32;
             if order.time_expire > now {
                 let seconds = order.time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
@@ -116,13 +107,11 @@ impl AlipayPcDirect {
     }
 
     pub fn create_credential(
-        order: &Order,
+        config: AlipayPcDirectConfig,
+        order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
-        let config = Self::load_config().map_err(|e| {
-            tracing::error!("error loading alipay_pc_direct config: {}", e);
-        })?;
         match config.alipay_version {
             AlipayApiType::MAPI => {
                 Self::create_mapi_credential(order, charge_req_payload, notify_url, config)

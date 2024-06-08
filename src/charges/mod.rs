@@ -8,10 +8,11 @@ use axum::{
 use rand::Rng;
 use serde_json::json;
 
+use crate::orders::OrderResponsePayload;
+
 mod alipay;
 mod charge;
-
-use crate::orders::Order;
+use alipay::{AlipayPcDirectConfig, AlipayWapConfig};
 use charge::{CreateChargeRequestPayload, PaymentChannel};
 
 async fn test() -> String {
@@ -22,6 +23,30 @@ async fn test() -> String {
         format!("ch_{}{}", timestamp, number)
     };
     charge_id
+}
+
+async fn get_channel_params(
+    prisma_client: &crate::prisma::PrismaClient,
+    sub_app_id: i32,
+    channel: &str,
+) -> Result<crate::prisma::channel_params::Data, StatusCode> {
+    let config = prisma_client
+        .channel_params()
+        .find_unique(crate::prisma::channel_params::sub_app_id_channel(
+            sub_app_id,
+            String::from(channel),
+        ))
+        .exec()
+        .await
+        .map_err(|e| {
+            tracing::error!("sql error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            tracing::error!("order not found");
+            StatusCode::NOT_FOUND
+        })?;
+    Ok(config)
 }
 
 async fn create_charge(
@@ -46,28 +71,62 @@ async fn create_charge(
     let notify_url = format!("{}{}", charge_notify_url_root, charge_id);
     // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
 
-    let order = Order {
-        id: order_id,
-        object: "order".to_string(),
-        app: "app_test".to_string(),
-        receipt_app: "app_test".to_string(),
-        service_app: "app_test".to_string(),
-        uid: "user_test".to_string(),
-        merchant_order_no: "TEST2001708140000017551".to_string(),
-        amount: charge_req_payload.charge_amount,
-        client_ip: "".to_string(),
-        subject: "test".to_string(),
-        body: "test".to_string(),
-        currency: "cny".to_string(),
-        time_expire: 1717942366,
+    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
+        tracing::error!("error getting prisma client: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let order = prisma_client
+        .order()
+        .find_unique(crate::prisma::order::order_id::equals(order_id))
+        .with(crate::prisma::order::sub_app::fetch())
+        .with(crate::prisma::order::app::fetch())
+        .exec()
+        .await
+        .map_err(|e| {
+            tracing::error!("sql error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            tracing::error!("order not found");
+            StatusCode::NOT_FOUND
+        })?;
+
+    let (app, sub_app) = {
+        let order = order.clone();
+        let app = order.app.ok_or_else(|| {
+            tracing::error!("order.app is None");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        let sub_app = order.sub_app.ok_or_else(|| {
+            tracing::error!("order.sub_app is None");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        (app, sub_app)
     };
 
     let credential_object = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            alipay::AlipayPcDirect::create_credential(&order, &charge_req_payload, &notify_url)
+            let config = get_channel_params(&prisma_client, sub_app.id, "alipay_pc_direct").await?;
+            let config =
+                serde_json::from_value::<AlipayPcDirectConfig>(config.params).map_err(|e| {
+                    tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            alipay::AlipayPcDirect::create_credential(
+                config,
+                &order,
+                &charge_req_payload,
+                &notify_url,
+            )
         }
         PaymentChannel::AlipayWap => {
-            alipay::AlipayWap::create_credential(&order, &charge_req_payload, &notify_url)
+            let config = get_channel_params(&prisma_client, sub_app.id, "alipay_wap").await?;
+            let config = serde_json::from_value::<AlipayWapConfig>(config.params).map_err(|e| {
+                tracing::error!("error deserializing alipay_wap config: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url)
         }
         _ => {
             tracing::error!("create_charge: unsupported channel");
@@ -80,8 +139,32 @@ async fn create_charge(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let mut result = serde_json::to_value(order).map_err(|e| {
-        tracing::error!("error serializing create_charge response: {:?}", e);
+    let result = OrderResponsePayload {
+        id: order.order_id.clone(),
+        object: String::from("order"),
+        created: order.created_at.timestamp() as i32,
+        app: app.key.clone(),
+        receipt_app: sub_app.key.clone(),
+        service_app: sub_app.key.clone(),
+        uid: order.uid,
+        merchant_order_no: order.merchant_order_no,
+        status: order.status,
+        paid: order.paid,
+        refunded: order.refunded,
+        amount: order.amount,
+        amount_paid: order.amount_paid,
+        amount_refunded: order.amount_refunded,
+        client_ip: order.client_ip,
+        subject: order.subject,
+        body: order.body,
+        currency: order.currency,
+        time_paid: None,
+        time_expire: order.time_expire,
+        metadata: order.metadata,
+    };
+
+    let mut result = serde_json::to_value(result).map_err(|e| {
+        tracing::error!("error serializing order response payload: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
