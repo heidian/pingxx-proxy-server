@@ -1,0 +1,41 @@
+generator client {
+    provider = "cargo prisma"
+    output   = "../src/prisma.rs"
+}
+
+datasource db {
+    provider = "mysql"
+    url      = env("DB_URL")
+}
+
+model App {
+    id        Int      @id @default(autoincrement())
+    key       String   @unique
+    name      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    subApps   SubApp[]
+}
+
+model SubApp {
+    id        Int             @id @default(autoincrement())
+    appId     Int
+    app       App             @relation(fields: [appId], references: [id], onDelete: Cascade)
+    key       String          @unique
+    name      String
+    createdAt DateTime        @default(now())
+    updatedAt DateTime        @updatedAt
+    channels  ChannelParams[]
+}
+
+model ChannelParams {
+    id        Int      @id @default(autoincrement())
+    subAppId  Int
+    subApp    SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
+    channel   String
+    params    Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([subAppId, channel])
+}
