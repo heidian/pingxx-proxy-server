@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, response::Json, routing::post, Router};
+use axum::{http::StatusCode, response::Json};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -73,10 +73,9 @@ impl OrderResponsePayload {
             metadata: order.metadata.clone(),
         }
     }
-
 }
 
-async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, StatusCode> {
+pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, StatusCode> {
     tracing::info!("create_order: {}", body);
     let req_payload: CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
         tracing::error!("error parsing create_order request payload: {:?}", e);
@@ -148,8 +147,4 @@ async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, Status
     };
 
     Ok(Json(result))
-}
-
-pub fn get_routes() -> Router {
-    Router::new().route("/orders", post(create_order))
 }

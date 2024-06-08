@@ -1,4 +1,4 @@
-#![recursion_limit = "256"]
+// #![recursion_limit = "256"]
 use axum::{
     routing::get,
     Router,
@@ -8,7 +8,6 @@ use tower_http::trace::TraceLayer;
 use dotenvy::dotenv;
 
 mod charges;
-mod orders;
 #[allow(dead_code, unused_imports)]
 mod prisma;
 
@@ -19,7 +18,6 @@ async fn main() {
     // build our application with a route
     let app = Router::new()
         .nest("/v1", charges::get_routes())
-        .nest("/v1", orders::get_routes())
         .route("/", get(root))
         .layer(
             ServiceBuilder::new()
