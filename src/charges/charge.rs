@@ -17,20 +17,8 @@ pub struct ChargeExtra {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct PingxxApp {
-    pub id: String,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
 pub struct CreateChargeRequestPayload {
-    pub order_no: String,
-    pub amount: u32,
+    pub charge_amount: u32,
     pub channel: PaymentChannel,
-    pub client_ip: String,
-    pub subject: String,
-    pub body: String,
-    pub currency: String,
-    pub time_expire: u32,
     pub extra: ChargeExtra,
-    pub app: PingxxApp,
 }

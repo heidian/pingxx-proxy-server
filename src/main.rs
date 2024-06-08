@@ -8,6 +8,7 @@ use tower_http::trace::TraceLayer;
 use dotenvy::dotenv;
 
 mod charges;
+mod orders;
 
 #[tokio::main]
 async fn main() {
@@ -16,6 +17,7 @@ async fn main() {
     // build our application with a route
     let app = Router::new()
         .nest("/v1", charges::get_routes())
+        .nest("/v1", orders::get_routes())
         .route("/", get(root))
         .layer(
             ServiceBuilder::new()

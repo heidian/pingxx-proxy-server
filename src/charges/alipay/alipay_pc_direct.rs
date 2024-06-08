@@ -2,6 +2,7 @@ use super::config::{AlipayApiType, AlipayPcDirectConfig};
 use super::mapi::MapiRequestPayload;
 use super::openapi::OpenApiRequestPayload;
 use crate::charges::charge::CreateChargeRequestPayload;
+use crate::orders::Order;
 use serde_json::json;
 
 pub struct AlipayPcDirect {}
@@ -16,19 +17,20 @@ impl AlipayPcDirect {
     }
 
     fn create_mapi_credential(
-        req_payload: &CreateChargeRequestPayload,
+        order: &Order,
+        charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
         config: AlipayPcDirectConfig,
     ) -> Result<serde_json::Value, ()> {
-        let return_url = match req_payload.extra.success_url.as_ref() {
+        let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
             None => "".to_string(),
         };
-        let total_fee = format!("{:.2}", req_payload.amount as f64 / 100.0);
+        let total_fee = format!("{:.2}", charge_req_payload.charge_amount as f64 / 100.0);
         let it_b_pay = {
             let now = chrono::Utc::now().timestamp() as u32;
-            if req_payload.time_expire > now {
-                let seconds = req_payload.time_expire - now;
+            if order.time_expire > now {
+                let seconds = order.time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
             } else {
                 tracing::error!("create_credential: expire_in_seconds < now");
@@ -42,9 +44,9 @@ impl AlipayPcDirect {
             return_url,
             notify_url: notify_url.to_string(),
             partner: config.alipay_pid.clone(),
-            out_trade_no: req_payload.order_no.clone(),
-            subject: req_payload.subject.clone(),
-            body: req_payload.body.clone(),
+            out_trade_no: order.merchant_order_no.clone(),
+            subject: order.subject.clone(),
+            body: order.body.clone(),
             total_fee,
             payment_type: String::from("1"),
             seller_id: config.alipay_pid.clone(),
@@ -61,19 +63,20 @@ impl AlipayPcDirect {
     }
 
     fn create_openapi_credential(
-        req_payload: &CreateChargeRequestPayload,
+        order: &Order,
+        charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
         config: AlipayPcDirectConfig,
     ) -> Result<serde_json::Value, ()> {
-        let return_url = match req_payload.extra.success_url.as_ref() {
+        let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
             None => "".to_string(),
         };
-        let total_amount = format!("{:.2}", req_payload.amount as f64 / 100.0);
+        let total_amount = format!("{:.2}", charge_req_payload.charge_amount as f64 / 100.0);
         let timeout_express = {
             let now = chrono::Utc::now().timestamp() as u32;
-            if req_payload.time_expire > now {
-                let seconds = req_payload.time_expire - now;
+            if order.time_expire > now {
+                let seconds = order.time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
             } else {
                 tracing::error!("create_credential: expire_in_seconds < now");
@@ -81,9 +84,9 @@ impl AlipayPcDirect {
             }
         };
         let biz_content = json!({
-            "body": req_payload.body.clone(),
-            "subject": req_payload.subject.clone(),
-            "out_trade_no": req_payload.order_no.clone(),
+            "body": order.body.clone(),
+            "subject": order.subject.clone(),
+            "out_trade_no": order.merchant_order_no.clone(),
             "total_amount": total_amount,
             "product_code": "FAST_INSTANT_TRADE_PAY",
             "extend_params": { "sys_service_provider_id": config.alipay_pid.clone() },
@@ -113,7 +116,8 @@ impl AlipayPcDirect {
     }
 
     pub fn create_credential(
-        req_payload: &CreateChargeRequestPayload,
+        order: &Order,
+        charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
         let config = Self::load_config().map_err(|e| {
@@ -121,10 +125,10 @@ impl AlipayPcDirect {
         })?;
         match config.alipay_version {
             AlipayApiType::MAPI => {
-                Self::create_mapi_credential(req_payload, notify_url, config)
+                Self::create_mapi_credential(order, charge_req_payload, notify_url, config)
             }
             AlipayApiType::OPENAPI => {
-                Self::create_openapi_credential(req_payload, notify_url, config)
+                Self::create_openapi_credential(order, charge_req_payload, notify_url, config)
             }
         }
     }

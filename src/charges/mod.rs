@@ -1,4 +1,5 @@
 use axum::{
+    extract::Path,
     http::StatusCode,
     response::Json,
     routing::{get, post},
@@ -10,6 +11,7 @@ use serde_json::json;
 mod alipay;
 mod charge;
 
+use crate::orders::Order;
 use charge::{CreateChargeRequestPayload, PaymentChannel};
 
 async fn test() -> String {
@@ -22,12 +24,17 @@ async fn test() -> String {
     charge_id
 }
 
-async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCode> {
-    tracing::info!("create_charge: {}", body);
-    let req_payload: CreateChargeRequestPayload = serde_json::from_str(&body).map_err(|e| {
-        tracing::error!("error parsing create_charge request payload: {:?}", e);
-        StatusCode::BAD_REQUEST
-    })?;
+async fn create_charge(
+    Path(order_id): Path<String>,
+    // body: String,
+    Json(charge_req_payload): Json<CreateChargeRequestPayload>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // tracing::info!("create_charge: {}", body);
+    // let charge_req_payload: CreateChargeRequestPayload =
+    //     serde_json::from_str(&body).map_err(|e| {
+    //         tracing::error!("error parsing create_charge request payload: {:?}", e);
+    //         StatusCode::BAD_REQUEST
+    //     })?;
     let timestamp = chrono::Utc::now().timestamp_millis();
     let charge_id = {
         let mut rng = rand::thread_rng();
@@ -39,12 +46,28 @@ async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCo
     let notify_url = format!("{}{}", charge_notify_url_root, charge_id);
     // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
 
-    let credential_object = match req_payload.channel {
+    let order = Order {
+        id: order_id,
+        object: "order".to_string(),
+        app: "app_test".to_string(),
+        receipt_app: "app_test".to_string(),
+        service_app: "app_test".to_string(),
+        uid: "user_test".to_string(),
+        merchant_order_no: "TEST2001708140000017551".to_string(),
+        amount: charge_req_payload.charge_amount,
+        client_ip: "".to_string(),
+        subject: "test".to_string(),
+        body: "test".to_string(),
+        currency: "cny".to_string(),
+        time_expire: 1717942366,
+    };
+
+    let credential_object = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            alipay::AlipayPcDirect::create_credential(&req_payload, &notify_url)
+            alipay::AlipayPcDirect::create_credential(&order, &charge_req_payload, &notify_url)
         }
         PaymentChannel::AlipayWap => {
-            alipay::AlipayWap::create_credential(&req_payload, &notify_url)
+            alipay::AlipayWap::create_credential(&order, &charge_req_payload, &notify_url)
         }
         _ => {
             tracing::error!("create_charge: unsupported channel");
@@ -57,56 +80,36 @@ async fn create_charge(body: String) -> Result<Json<serde_json::Value>, StatusCo
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let mut charge = json!({
-        "id": charge_id,
-        "object": "charge",
-        "created": timestamp,
-        "livemode": true,
-        "paid": false,
-        // "refunded": false,
-        "reversed": false,
-        "time_paid": null,
-        "time_settle": null,
-        "transaction_no": null,
-        // "refunds": {
-        //     "object": "list",
-        //     "url": "/v1/charges/ch_101240601691280343040013/refunds",
-        //     "has_more": false,
-        //     "data": []
-        // },
-        // "amount_refunded": 0,
-        "failure_code": null,
-        "failure_msg": null,
-        "metadata": {},
-        "description": null
-    });
+    let mut result = serde_json::to_value(order).map_err(|e| {
+        tracing::error!("error serializing create_charge response: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-    charge.as_object_mut().unwrap().extend({
-        let req_payload_obj = serde_json::to_value(&req_payload).map_err(|e| {
-            tracing::error!("error serializing create_charge response: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        req_payload_obj.as_object().unwrap().clone()
-    });
-
-    charge["credential"] = {
-        let mut credential = json!({
-            "object": "credential",
+    result["charge_essentials"] = {
+        let mut charge = json!({
+            "channel": charge_req_payload.channel,
+            "extra": charge_req_payload.extra,
         });
-        let key = serde_json::to_value(&req_payload.channel)
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_owned();
-        credential[key] = credential_object;
-        credential
+        charge["credential"] = {
+            let mut credential = json!({
+                "object": "credential",
+            });
+            let key = serde_json::to_value(&charge_req_payload.channel)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_owned();
+            credential[key] = credential_object;
+            credential
+        };
+        charge
     };
 
-    Ok(Json(charge))
+    Ok(Json(result))
 }
 
 pub fn get_routes() -> Router {
     Router::new()
         .route("/test", get(test))
-        .route("/charges", post(create_charge))
+        .route("/orders/:order_id/pay", post(create_charge))
 }

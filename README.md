@@ -19,3 +19,10 @@ Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业�
 第三阶段
 - Dashboard
 - 分叉，不再兼容
+
+## 调试方式
+
+1. 启动 frp, 将本地服务暴露到 pingxx.heidianapi.com
+2. 启动 shopbackend 和 shopbackend django admin
+3. 启动 shopfront 以前端发起支付
+4. 启动 pingxx-proxy-server
