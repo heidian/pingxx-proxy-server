@@ -15,6 +15,7 @@ model App {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
     subApps   SubApp[]
+    orders    Order[]
 }
 
 model SubApp {
@@ -26,6 +27,7 @@ model SubApp {
     createdAt DateTime        @default(now())
     updatedAt DateTime        @updatedAt
     channels  ChannelParams[]
+    orders    Order[]
 }
 
 model ChannelParams {
@@ -38,4 +40,32 @@ model ChannelParams {
     updatedAt DateTime @updatedAt
 
     @@unique([subAppId, channel])
+}
+
+model Order {
+    id                Int      @id @default(autoincrement())
+    appId             Int
+    app               App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+    subAppId          Int
+    subApp            SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
+    orderId           String
+    uid               String
+    merchant_order_no String
+    status            String
+    paid              Boolean
+    refunded          Boolean
+    amount            Int
+    amount_paid       Int
+    amount_refunded   Int
+    client_ip         String
+    subject           String
+    body              String
+    currency          String
+    time_paid         Int?
+    time_expire       Int
+    metadata          Json
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    @@unique([subAppId, orderId])
 }
