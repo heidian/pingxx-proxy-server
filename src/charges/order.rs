@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, response::Json};
+use axum::{extract::Path, http::StatusCode, response::Json};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -75,6 +75,49 @@ impl OrderResponsePayload {
     }
 }
 
+pub async fn load_order_from_db(
+    prisma_client: &crate::prisma::PrismaClient,
+    order_id: &str,
+) -> Result<
+    (
+        crate::prisma::order::Data,
+        crate::prisma::app::Data,
+        crate::prisma::sub_app::Data,
+    ),
+    StatusCode,
+> {
+    let order = prisma_client
+        .order()
+        .find_unique(crate::prisma::order::order_id::equals(order_id.to_string()))
+        .with(crate::prisma::order::sub_app::fetch())
+        .with(crate::prisma::order::app::fetch())
+        .exec()
+        .await
+        .map_err(|e| {
+            tracing::error!("sql error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            tracing::error!("order not found");
+            StatusCode::NOT_FOUND
+        })?;
+
+    let (app, sub_app) = {
+        let order = order.clone();
+        let app = order.app.ok_or_else(|| {
+            tracing::error!("order.app is None");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        let sub_app = order.sub_app.ok_or_else(|| {
+            tracing::error!("order.sub_app is None");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        (*app, *sub_app)
+    };
+
+    Ok((order, app, sub_app))
+}
+
 pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, StatusCode> {
     tracing::info!("create_order: {}", body);
     let req_payload: CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
@@ -93,12 +136,12 @@ pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, St
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let order = prisma_client
+    prisma_client
         .order()
         .create(
             crate::prisma::app::key::equals(req_payload.app.clone()),
             crate::prisma::sub_app::key::equals(req_payload.service_app.clone()),
-            order_id,
+            order_id.clone(),
             req_payload.uid,
             req_payload.merchant_order_no,
             String::from("created"),
@@ -122,29 +165,20 @@ pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, St
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let result = OrderResponsePayload {
-        id: order.order_id.clone(),
-        object: String::from("order"),
-        created: order.created_at.timestamp() as i32,
-        app: req_payload.app,
-        receipt_app: req_payload.receipt_app,
-        service_app: req_payload.service_app,
-        uid: order.uid,
-        merchant_order_no: order.merchant_order_no,
-        status: order.status,
-        paid: order.paid,
-        refunded: order.refunded,
-        amount: order.amount,
-        amount_paid: order.amount_paid,
-        amount_refunded: order.amount_refunded,
-        client_ip: order.client_ip,
-        subject: order.subject,
-        body: order.body,
-        currency: order.currency,
-        time_paid: None,
-        time_expire: order.time_expire,
-        metadata: order.metadata,
-    };
+    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
+    let result = OrderResponsePayload::new(&order, &app, &sub_app);
 
+    Ok(Json(result))
+}
+
+pub async fn retrieve_order(
+    Path(order_id): Path<String>,
+) -> Result<Json<OrderResponsePayload>, StatusCode> {
+    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
+        tracing::error!("error creating prisma client: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
+    let result = OrderResponsePayload::new(&order, &app, &sub_app);
     Ok(Json(result))
 }

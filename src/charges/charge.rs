@@ -3,7 +3,10 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::{alipay::{self, AlipayPcDirectConfig, AlipayWapConfig}, order::OrderResponsePayload};
+use super::{
+    alipay::{self, AlipayPcDirectConfig, AlipayWapConfig},
+    order::{load_order_from_db, OrderResponsePayload},
+};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub enum PaymentChannel {
@@ -28,7 +31,7 @@ pub struct CreateChargeRequestPayload {
     pub extra: ChargeExtra,
 }
 
-async fn get_channel_params(
+async fn load_channel_params_from_db(
     prisma_client: &crate::prisma::PrismaClient,
     sub_app_id: i32,
     channel: &str,
@@ -79,38 +82,12 @@ pub async fn create_charge(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let order = prisma_client
-        .order()
-        .find_unique(crate::prisma::order::order_id::equals(order_id))
-        .with(crate::prisma::order::sub_app::fetch())
-        .with(crate::prisma::order::app::fetch())
-        .exec()
-        .await
-        .map_err(|e| {
-            tracing::error!("sql error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or_else(|| {
-            tracing::error!("order not found");
-            StatusCode::NOT_FOUND
-        })?;
-
-    let (app, sub_app) = {
-        let order = order.clone();
-        let app = order.app.ok_or_else(|| {
-            tracing::error!("order.app is None");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        let sub_app = order.sub_app.ok_or_else(|| {
-            tracing::error!("order.sub_app is None");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        (app, sub_app)
-    };
+    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
 
     let credential_object = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            let config = get_channel_params(&prisma_client, sub_app.id, "alipay_pc_direct").await?;
+            let config =
+                load_channel_params_from_db(&prisma_client, sub_app.id, "alipay_pc_direct").await?;
             let config =
                 serde_json::from_value::<AlipayPcDirectConfig>(config.params).map_err(|e| {
                     tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
@@ -124,7 +101,8 @@ pub async fn create_charge(
             )
         }
         PaymentChannel::AlipayWap => {
-            let config = get_channel_params(&prisma_client, sub_app.id, "alipay_wap").await?;
+            let config =
+                load_channel_params_from_db(&prisma_client, sub_app.id, "alipay_wap").await?;
             let config = serde_json::from_value::<AlipayWapConfig>(config.params).map_err(|e| {
                 tracing::error!("error deserializing alipay_wap config: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
