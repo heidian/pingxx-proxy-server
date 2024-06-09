@@ -24,6 +24,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 prisma-client-rust = { workspace = true }
 prisma-client-rust-cli = { workspace = true }
+percent-encoding = "2.3.1"
 
 [workspace.dependencies]
 prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", features = [

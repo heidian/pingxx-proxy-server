@@ -2344,6 +2344,7 @@ dependencies = [
  "data-encoding",
  "dotenvy",
  "openssl",
+ "percent-encoding",
  "prisma-client-rust",
  "prisma-client-rust-cli",
  "rand 0.8.5",
