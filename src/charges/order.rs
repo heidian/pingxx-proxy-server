@@ -2,6 +2,9 @@ use axum::{extract::Path, http::StatusCode, response::Json};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::str::FromStr;
+
+use super::charge::{ChargeResponsePayload, PaymentChannel};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CreateOrderRequestPayload {
@@ -91,6 +94,14 @@ pub async fn load_order_from_db(
         .find_unique(crate::prisma::order::order_id::equals(order_id.to_string()))
         .with(crate::prisma::order::sub_app::fetch())
         .with(crate::prisma::order::app::fetch())
+        .with(
+            crate::prisma::order::charges::fetch(vec![
+                // crate::prisma::charge::is_valid::equals(true)
+            ])
+            .order_by(crate::prisma::charge::created_at::order(
+                prisma_client_rust::Direction::Desc,
+            )), // .take(1),
+        )
         .exec()
         .await
         .map_err(|e| {
@@ -173,12 +184,36 @@ pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, St
 
 pub async fn retrieve_order(
     Path(order_id): Path<String>,
-) -> Result<Json<OrderResponsePayload>, StatusCode> {
+) -> Result<Json<serde_json::Value>, StatusCode> {
     let prisma_client = crate::prisma::new_client().await.map_err(|e| {
         tracing::error!("error creating prisma client: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
-    let result = OrderResponsePayload::new(&order, &app, &sub_app);
+    let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
+    let mut result = serde_json::to_value(order_response).map_err(|e| {
+        tracing::error!("error serializing order response payload: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let charge = order.charges.unwrap_or_default().first().cloned();
+    if let Some(charge) = charge {
+        let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
+            tracing::error!("error parsing charge channel: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        let charge_response = ChargeResponsePayload {
+            id: charge.charge_id,
+            object: "charge".to_string(),
+            is_valid: charge.is_valid,
+            channel,
+            amount: charge.amount,
+            extra: charge.extra,
+            credential: charge.credential,
+        };
+        result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
+            tracing::error!("error serializing charge essentials: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    }
     Ok(Json(result))
 }
