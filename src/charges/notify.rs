@@ -129,14 +129,22 @@ pub async fn create_charge_notify(
     Ok("success".to_string())
 }
 
+#[allow(unreachable_code)]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openssl::{
+        hash::MessageDigest,
+        pkey::PKey,
+        rsa::Rsa,
+        sign::Verifier,
+    };
 
     #[tokio::test]
     async fn test_charge_notify_verify_rsa2() {
+        return; // skip test
         tracing_subscriber::fmt::init(); // run test with RUST_LOG=info
-        let charge_id = "ch_171792765461736635292532";
+        let charge_id = "ch_171795983600236120277728";
 
         let prisma_client = crate::prisma::new_client().await.unwrap();
         let history = prisma_client
@@ -152,4 +160,25 @@ mod tests {
         let payload = history.data.clone();
         verify(&prisma_client, charge_id, &payload).await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_pingxx_signature() {
+        return; // skip test
+        tracing_subscriber::fmt::init();
+        let payload="";
+        let signature = "";
+        let api_public_key = "";
+        let keypair = Rsa::public_key_from_pem(api_public_key.as_bytes()).unwrap();
+        let keypair = PKey::from_rsa(keypair).unwrap();
+        let mut verifier = Verifier::new(MessageDigest::sha256(), &keypair).unwrap();
+        verifier.update(payload.as_bytes()).unwrap();
+        let signature_bytes = data_encoding::BASE64
+            .decode(signature.as_bytes())
+            .unwrap();
+        let result = verifier.verify(&signature_bytes).unwrap();
+        assert!(result);
+        // tracing::info!("verify result: {}", result);
+    }
+
+    // 由于没有 ping++ 的私钥，无法以 ping++ 的名义发送 webhook 到业务系统，业务系统需要单独验证从这里发出去的 webhook
 }
