@@ -5,5 +5,5 @@ publish = false
 
 [dependencies]
 serde = { version = "1.0.203" }
-prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11" }
-prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11" }
+prisma-client-rust = { workspace = true }
+prisma-client-rust-cli = { workspace = true }
