@@ -86,7 +86,7 @@ model Charge {
 model ChargeNotifyHistory {
     id        Int      @id @default(autoincrement())
     chargeId  String
-    data      Json
+    data      String   @db.Text
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 

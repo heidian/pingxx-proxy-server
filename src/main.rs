@@ -17,7 +17,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
     // build our application with a route
     let app = Router::new()
-        .nest("/v1", charges::get_routes())
+        .nest("/", charges::get_routes())
         .route("/", get(root))
         .layer(
             ServiceBuilder::new()

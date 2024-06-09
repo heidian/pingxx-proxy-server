@@ -1,5 +1,6 @@
 mod alipay;
 mod charge;
+mod notify;
 mod order;
 
 mod routes;

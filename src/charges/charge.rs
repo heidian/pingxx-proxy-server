@@ -104,8 +104,8 @@ pub async fn create_charge(
         format!("ch_{}{}", timestamp, number)
     };
 
-    let charge_notify_url_root = std::env::var("CHARGE_NOTIFY_URL_ROOT").unwrap();
-    let notify_url = format!("{}{}", charge_notify_url_root, charge_id);
+    let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
+    let notify_url = format!("{}/notify/charges/{}", charge_notify_origin, charge_id);
     // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
 
     let prisma_client = crate::prisma::new_client().await.map_err(|e| {

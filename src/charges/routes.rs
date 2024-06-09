@@ -6,6 +6,7 @@ use rand::Rng;
 
 use super::charge::create_charge;
 use super::order::{create_order, retrieve_order};
+use super::notify::create_charge_notify;
 
 async fn test() -> String {
     let charge_id = {
@@ -20,7 +21,8 @@ async fn test() -> String {
 pub fn get_routes() -> Router {
     Router::new()
         .route("/test", get(test))
-        .route("/orders", post(create_order))
-        .route("/orders/:order_id", get(retrieve_order))
-        .route("/orders/:order_id/pay", post(create_charge))
+        .route("/v1/orders", post(create_order))
+        .route("/v1/orders/:order_id", get(retrieve_order))
+        .route("/v1/orders/:order_id/pay", post(create_charge))
+        .route("/notify/charges/:charge_id", post(create_charge_notify))
 }
