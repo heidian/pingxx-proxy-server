@@ -62,10 +62,10 @@ pub struct ChargeResponsePayload {
     pub credential: serde_json::Value,
 }
 
-async fn load_channel_params_from_db(
+pub async fn load_channel_params_from_db(
     prisma_client: &crate::prisma::PrismaClient,
     sub_app_id: i32,
-    channel: PaymentChannel,
+    channel: &PaymentChannel,
 ) -> Result<crate::prisma::channel_params::Data, StatusCode> {
     let config = prisma_client
         .channel_params()
@@ -117,14 +117,14 @@ pub async fn create_charge(
 
     let credential_object = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            let config = load_channel_params_from_db(
+            let channel_params = load_channel_params_from_db(
                 &prisma_client,
                 sub_app.id,
-                PaymentChannel::AlipayPcDirect,
+                &PaymentChannel::AlipayPcDirect,
             )
             .await?;
-            let config =
-                serde_json::from_value::<AlipayPcDirectConfig>(config.params).map_err(|e| {
+            let config = serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params)
+                .map_err(|e| {
                     tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
@@ -136,13 +136,14 @@ pub async fn create_charge(
             )
         }
         PaymentChannel::AlipayWap => {
-            let config =
-                load_channel_params_from_db(&prisma_client, sub_app.id, PaymentChannel::AlipayWap)
+            let channel_params =
+                load_channel_params_from_db(&prisma_client, sub_app.id, &PaymentChannel::AlipayWap)
                     .await?;
-            let config = serde_json::from_value::<AlipayWapConfig>(config.params).map_err(|e| {
-                tracing::error!("error deserializing alipay_wap config: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            let config =
+                serde_json::from_value::<AlipayWapConfig>(channel_params.params).map_err(|e| {
+                    tracing::error!("error deserializing alipay_wap config: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
             alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url)
         }
         _ => {

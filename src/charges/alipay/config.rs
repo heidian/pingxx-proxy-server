@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum AlipayApiType {
@@ -23,12 +24,17 @@ impl<'de> Deserialize<'de> for AlipayApiType {
     }
 }
 
+/**
+ * AlipaySignType 没用到，只做个记录
+ * AlipayApiType 决定了要用 RSA 还是 RSA256
+ * RSA 对应 MAPI，RSA2 (即 RSA256) 对应 OPENAPI
+ */
 #[derive(Debug, Deserialize)]
-pub enum AlipaySignType {
+enum AlipaySignType {
     #[serde(rename = "rsa")]
     RSA,
     #[serde(rename = "rsa2")]
-    RSA256,
+    RSA2,
 }
 
 #[allow(dead_code)]
@@ -41,7 +47,7 @@ pub struct AlipayPcDirectConfig {
     pub alipay_version: AlipayApiType,
     pub alipay_app_id: String,
 
-    pub alipay_sign_type: AlipaySignType,
+    alipay_sign_type: AlipaySignType,
     pub alipay_private_key: String,
     pub alipay_public_key: String,
     pub alipay_private_key_rsa2: String,
@@ -58,9 +64,27 @@ pub struct AlipayWapConfig {
     pub alipay_version: AlipayApiType,
     pub alipay_app_id: String,
 
-    pub alipay_sign_type: AlipaySignType,
+    alipay_sign_type: AlipaySignType,
     pub alipay_mer_wap_private_key: String,
     pub alipay_wap_public_key: String,
     pub alipay_mer_wap_private_key_rsa2: String,
     pub alipay_wap_public_key_rsa2: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, PartialEq)]
+pub enum AlipayTradeStatus {
+    TradeSuccess,
+    TradeFinished,
+}
+
+impl FromStr for AlipayTradeStatus {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "TRADE_SUCCESS" => Ok(AlipayTradeStatus::TradeSuccess),
+            "TRADE_FINISHED" => Ok(AlipayTradeStatus::TradeFinished),
+            _ => Err(format!("unknown alipay trade status: {}", s)),
+        }
+    }
 }

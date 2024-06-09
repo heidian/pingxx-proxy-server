@@ -3,14 +3,16 @@ use axum::{
     http::HeaderMap,
     http::StatusCode,
 };
+use std::str::FromStr;
 
-use super::alipay::{verify_rsa2_sign, AlipayPcDirectConfig};
+use super::alipay::{self, AlipayPcDirectConfig, AlipayTradeStatus, AlipayWapConfig};
+use super::charge::{load_channel_params_from_db, PaymentChannel};
 
 pub async fn verify(
     prisma_client: &crate::prisma::PrismaClient,
     charge_id: &str,
     payload: &str,
-) -> Result<bool, StatusCode> {
+) -> Result<(), StatusCode> {
     let charge = prisma_client
         .charge()
         .find_unique(crate::prisma::charge::charge_id::equals(charge_id.into()))
@@ -33,42 +35,42 @@ pub async fn verify(
         tracing::error!("sub_app not found for charge {}", &charge_id);
         StatusCode::NOT_FOUND
     })?;
-
-    let channel_params = prisma_client
-        .channel_params()
-        .find_first(vec![
-            crate::prisma::channel_params::sub_app_id::equals(sub_app.id),
-            crate::prisma::channel_params::channel::equals(charge.channel.clone()),
-        ])
-        .exec()
-        .await
-        .map_err(|e| {
-            tracing::error!("sql error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or_else(|| {
-            tracing::error!(
-                "channel_params not found for sub app {} channel {}",
-                &sub_app.key,
-                &charge.channel
-            );
-            StatusCode::NOT_FOUND
-        })?;
-
-    let params =
-        serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params).map_err(|e| {
-            tracing::error!("error deserializing channel_params: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let public_key = params.alipay_public_key_rsa2.clone();
-    let payload = payload.to_string();
-
-    let result = verify_rsa2_sign(&payload, &public_key).map_err(|e| {
-        tracing::error!("error verifying rsa2 sign: {:?}", e);
+    let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
+        tracing::error!("error parsing charge channel: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    if result {
+    let channel_params = load_channel_params_from_db(prisma_client, sub_app.id, &channel).await?;
+    let trade_status = match channel {
+        PaymentChannel::AlipayPcDirect => {
+            let config = serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params)
+                .map_err(|e| {
+                    tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            alipay::AlipayPcDirect::process_notify(config, payload).map_err(|e| {
+                tracing::error!("error processing alipay notify: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+        }
+        PaymentChannel::AlipayWap => {
+            let config = serde_json::from_value::<AlipayWapConfig>(channel_params.params)
+                .map_err(|e| {
+                    tracing::error!("error deserializing alipay_wap config: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            alipay::AlipayWap::process_notify(config, payload).map_err(|e| {
+                tracing::error!("error processing alipay notify: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+        }
+        _ => {
+            tracing::error!("unsupported channel: {:?}", channel);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+
+    if trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished {
         // update order.paid
         prisma_client
             .order()
@@ -91,7 +93,7 @@ pub async fn verify(
             })?;
     }
 
-    Ok(result)
+    Ok(())
 }
 
 pub async fn create_charge_notify(
@@ -122,13 +124,9 @@ pub async fn create_charge_notify(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let verified = verify(&prisma_client, &charge_id, &charge_notify_payload).await?;
-    if verified {
-        Ok("success".to_string())
-    } else {
-        tracing::error!("verify failed for charge {}", &charge_id);
-        Err(StatusCode::BAD_REQUEST)
-    }
+    verify(&prisma_client, &charge_id, &charge_notify_payload).await?;
+
+    Ok("success".to_string())
 }
 
 #[cfg(test)]
