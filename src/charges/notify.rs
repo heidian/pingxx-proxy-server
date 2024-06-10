@@ -47,7 +47,7 @@ async fn send_webhook(
     });
 
     let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
-    reqwest::Client::new()
+    let res = reqwest::Client::new()
         .post(&app_webhook_url)
         .json(&event_payload)
         .send()
@@ -55,6 +55,7 @@ async fn send_webhook(
         .map_err(|e| {
             tracing::error!("error sending webhook: {:?}", e);
         })?;
+    tracing::info!("webhook response {} {:?}", res.status(), res.text().await);
 
     Ok(())
 }
@@ -82,7 +83,7 @@ async fn process_notify(
             tracing::error!("charge not found: {}", &charge_id);
             StatusCode::NOT_FOUND
         })?;
-    let order = *charge.order.clone().ok_or_else(|| {
+    let mut order = *charge.order.clone().ok_or_else(|| {
         tracing::error!("order not found for charge {}", &charge_id);
         StatusCode::NOT_FOUND
     })?;
@@ -130,8 +131,8 @@ async fn process_notify(
     };
 
     if trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished {
-        // update order.paid
-        prisma_client
+        // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
+        order = prisma_client
             .order()
             .update(
                 crate::prisma::order::id::equals(order.id),
@@ -184,6 +185,35 @@ pub async fn create_charge_notify(
             tracing::error!("sql error: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
+
+    Ok("success".to_string())
+}
+
+pub async fn retry_charge_notify(
+    Path(id): Path<i32>,
+) -> Result<String, StatusCode> {
+    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
+        tracing::error!("error getting prisma client: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let history = prisma_client
+        .charge_notify_history()
+        .find_unique(crate::prisma::charge_notify_history::id::equals(id))
+        .exec()
+        .await
+        .map_err(|e| {
+            tracing::error!("sql error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            tracing::error!("charge notify history not found: {}", id);
+            StatusCode::NOT_FOUND
+        })?;
+    let charge_id = history.charge_id;
+    let charge_notify_payload = history.data;
 
     process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
 

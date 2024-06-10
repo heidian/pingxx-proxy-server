@@ -6,7 +6,7 @@ use axum::{
 };
 
 use super::charge::create_charge;
-use super::notify::create_charge_notify;
+use super::notify::{create_charge_notify, retry_charge_notify};
 use super::order::{create_order, retrieve_order};
 
 async fn test() -> &'static str {
@@ -43,4 +43,5 @@ pub fn get_routes() -> Router {
         .route("/v1/orders/:order_id", get(retrieve_order))
         .route("/v1/orders/:order_id/pay", post(create_charge))
         .route("/notify/charges/:charge_id", post(create_charge_notify))
+        .route("/notify/:id/retry", post(retry_charge_notify))
 }
