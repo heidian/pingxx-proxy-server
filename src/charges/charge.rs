@@ -1,5 +1,4 @@
 use axum::{extract::Path, http::StatusCode, response::Json};
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
@@ -97,12 +96,7 @@ pub async fn create_charge(
     //         tracing::error!("error parsing create_charge request payload: {:?}", e);
     //         StatusCode::BAD_REQUEST
     //     })?;
-    let timestamp = chrono::Utc::now().timestamp_millis();
-    let charge_id = {
-        let mut rng = rand::thread_rng();
-        let number: u64 = rng.gen_range(10000000000..100000000000);
-        format!("ch_{}{}", timestamp, number)
-    };
+    let charge_id = crate::utils::generate_id("ch_");
 
     let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
     let notify_url = format!("{}/notify/charges/{}", charge_notify_origin, charge_id);

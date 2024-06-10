@@ -4,20 +4,13 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use rand::Rng;
 
 use super::charge::create_charge;
 use super::notify::create_charge_notify;
 use super::order::{create_order, retrieve_order};
 
-async fn test() -> String {
-    let charge_id = {
-        let mut rng = rand::thread_rng();
-        let timestamp = chrono::Utc::now().timestamp_millis();
-        let number: u64 = rng.gen_range(10000000000..100000000000);
-        format!("ch_{}{}", timestamp, number)
-    };
-    charge_id
+async fn test() -> &'static str {
+    "test"
 }
 
 pub fn get_routes() -> Router {

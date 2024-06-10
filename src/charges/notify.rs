@@ -4,11 +4,62 @@ use axum::{
     http::StatusCode,
 };
 use std::str::FromStr;
+use serde_json::json;
 
 use super::alipay::{self, AlipayPcDirectConfig, AlipayTradeStatus, AlipayWapConfig};
-use super::charge::{load_channel_params_from_db, PaymentChannel};
+use super::charge::{load_channel_params_from_db, PaymentChannel, ChargeResponsePayload};
+use super::order::OrderResponsePayload;
 
-pub async fn verify(
+async fn send_webhook(
+    app: &crate::prisma::app::Data,
+    sub_app: &crate::prisma::sub_app::Data,
+    order: &crate::prisma::order::Data,
+    charge: &crate::prisma::charge::Data,
+) -> Result<(), ()> {
+    let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
+    let mut event_data = serde_json::to_value(order_response).map_err(|e| {
+        tracing::error!("error serializing order response payload: {:?}", e);
+    })?;
+    let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
+        tracing::error!("error parsing charge channel: {:?}", e);
+    })?;
+    let charge_response = ChargeResponsePayload {
+        id: charge.charge_id.clone(),
+        object: "charge".to_string(),
+        is_valid: charge.is_valid,
+        channel,
+        amount: charge.amount,
+        extra: charge.extra.clone(),
+        credential: charge.credential.clone(),
+    };
+    event_data["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
+        tracing::error!("error serializing charge essentials: {:?}", e);
+    })?;
+
+    let event_payload = json!({
+        "id": crate::utils::generate_id("evt_"),
+        "object": "event",
+        "created": chrono::Utc::now().timestamp(),
+        "type": "order.succeeded",
+        "data": {
+            "object": event_data
+        },
+    });
+
+    let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
+    reqwest::Client::new()
+        .post(&app_webhook_url)
+        .json(&event_payload)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("error sending webhook: {:?}", e);
+        })?;
+
+    Ok(())
+}
+
+async fn process_notify(
     prisma_client: &crate::prisma::PrismaClient,
     charge_id: &str,
     payload: &str,
@@ -16,7 +67,11 @@ pub async fn verify(
     let charge = prisma_client
         .charge()
         .find_unique(crate::prisma::charge::charge_id::equals(charge_id.into()))
-        .with(crate::prisma::charge::order::fetch().with(crate::prisma::order::sub_app::fetch()))
+        .with(
+            crate::prisma::charge::order::fetch()
+            .with(crate::prisma::order::sub_app::fetch())
+            .with(crate::prisma::order::app::fetch())
+        )
         .exec()
         .await
         .map_err(|e| {
@@ -29,6 +84,10 @@ pub async fn verify(
         })?;
     let order = *charge.order.clone().ok_or_else(|| {
         tracing::error!("order not found for charge {}", &charge_id);
+        StatusCode::NOT_FOUND
+    })?;
+    let app = *order.app.clone().ok_or_else(|| {
+        tracing::error!("app not found for charge {}", &charge_id);
         StatusCode::NOT_FOUND
     })?;
     let sub_app = *order.sub_app.clone().ok_or_else(|| {
@@ -93,6 +152,8 @@ pub async fn verify(
             })?;
     }
 
+    let _ = send_webhook(&app, &sub_app, &order, &charge).await;
+
     Ok(())
 }
 
@@ -124,7 +185,7 @@ pub async fn create_charge_notify(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    verify(&prisma_client, &charge_id, &charge_notify_payload).await?;
+    process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
 
     Ok("success".to_string())
 }
@@ -158,7 +219,7 @@ mod tests {
             .unwrap();
 
         let payload = history.data.clone();
-        verify(&prisma_client, charge_id, &payload).await.unwrap();
+        process_notify(&prisma_client, charge_id, &payload).await.unwrap();
     }
 
     #[tokio::test]

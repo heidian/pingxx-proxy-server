@@ -1,5 +1,4 @@
 use axum::{extract::Path, http::StatusCode, response::Json};
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
@@ -135,12 +134,8 @@ pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, St
         tracing::error!("error parsing create_order request payload: {:?}", e);
         StatusCode::BAD_REQUEST
     })?;
-    let timestamp = chrono::Utc::now().timestamp_millis();
-    let order_id = {
-        let mut rng = rand::thread_rng();
-        let number: u64 = rng.gen_range(10000000000..100000000000);
-        format!("o_{}{}", timestamp, number)
-    };
+
+    let order_id = crate::utils::generate_id("o_");
 
     let prisma_client = crate::prisma::new_client().await.map_err(|e| {
         tracing::error!("error creating prisma client: {:?}", e);

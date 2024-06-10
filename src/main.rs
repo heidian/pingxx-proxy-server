@@ -7,6 +7,7 @@ use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use dotenvy::dotenv;
 
+mod utils;
 mod charges;
 #[allow(dead_code, unused_imports)]
 mod prisma;
