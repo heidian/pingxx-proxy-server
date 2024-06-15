@@ -1,4 +1,5 @@
 mod alipay;
+mod wechat;
 mod charge;
 mod notify;
 mod order;

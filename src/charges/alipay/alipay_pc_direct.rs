@@ -8,10 +8,10 @@ pub struct AlipayPcDirect {}
 
 impl AlipayPcDirect {
     fn create_mapi_credential(
+        config: AlipayPcDirectConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
-        config: AlipayPcDirectConfig,
     ) -> Result<serde_json::Value, ()> {
         let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
@@ -54,10 +54,10 @@ impl AlipayPcDirect {
     }
 
     fn create_openapi_credential(
+        config: AlipayPcDirectConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
-        config: AlipayPcDirectConfig,
     ) -> Result<serde_json::Value, ()> {
         let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
@@ -106,7 +106,7 @@ impl AlipayPcDirect {
         Ok(json!(openapi_request_payload))
     }
 
-    pub fn create_credential(
+    pub async fn create_credential(
         config: AlipayPcDirectConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
@@ -114,10 +114,10 @@ impl AlipayPcDirect {
     ) -> Result<serde_json::Value, ()> {
         match config.alipay_version {
             AlipayApiType::MAPI => {
-                Self::create_mapi_credential(order, charge_req_payload, notify_url, config)
+                Self::create_mapi_credential(config, order, charge_req_payload, notify_url)
             }
             AlipayApiType::OPENAPI => {
-                Self::create_openapi_credential(order, charge_req_payload, notify_url, config)
+                Self::create_openapi_credential(config, order, charge_req_payload, notify_url)
             }
         }
     }

@@ -106,7 +106,7 @@ impl AlipayWap {
         Ok(json!(openapi_request_payload))
     }
 
-    pub fn create_credential(
+    pub async fn create_credential(
         config: AlipayWapConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,

@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use super::{
     alipay::{self, AlipayPcDirectConfig, AlipayWapConfig},
+    wechat::{self, WxPubConfig},
     order::{load_order_from_db, OrderResponsePayload},
 };
 
@@ -87,15 +88,15 @@ pub async fn load_channel_params_from_db(
 
 pub async fn create_charge(
     Path(order_id): Path<String>,
-    // body: String,
-    Json(charge_req_payload): Json<CreateChargeRequestPayload>,
+    body: String,
+    // Json(charge_req_payload): Json<CreateChargeRequestPayload>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // tracing::info!("create_charge: {}", body);
-    // let charge_req_payload: CreateChargeRequestPayload =
-    //     serde_json::from_str(&body).map_err(|e| {
-    //         tracing::error!("error parsing create_charge request payload: {:?}", e);
-    //         StatusCode::BAD_REQUEST
-    //     })?;
+    tracing::info!(order_id, body, "create_charge");
+    let charge_req_payload: CreateChargeRequestPayload =
+        serde_json::from_str(&body).map_err(|e| {
+            tracing::error!("error parsing create_charge request payload: {:?}", e);
+            StatusCode::BAD_REQUEST
+        })?;
     let charge_id = crate::utils::generate_id("ch_");
 
     let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
@@ -127,7 +128,7 @@ pub async fn create_charge(
                 &order,
                 &charge_req_payload,
                 &notify_url,
-            )
+            ).await
         }
         PaymentChannel::AlipayWap => {
             let channel_params =
@@ -138,12 +139,23 @@ pub async fn create_charge(
                     tracing::error!("error deserializing alipay_wap config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url)
+            alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url).await
         }
-        _ => {
-            tracing::error!("create_charge: unsupported channel");
-            return Err(StatusCode::BAD_REQUEST);
+        PaymentChannel::WxPub => {
+            let channel_params =
+                load_channel_params_from_db(&prisma_client, sub_app.id, &PaymentChannel::WxPub)
+                    .await?;
+            let config =
+                serde_json::from_value::<WxPubConfig>(channel_params.params).map_err(|e| {
+                    tracing::error!("error deserializing wx_pub config: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            wechat::WxPub::create_credential(config, &order, &charge_req_payload, &notify_url).await
         }
+        // _ => {
+        //     tracing::error!("create_charge: unsupported channel");
+        //     return Err(StatusCode::BAD_REQUEST);
+        // }
     };
 
     let credential_object = credential_object.map_err(|_| {
