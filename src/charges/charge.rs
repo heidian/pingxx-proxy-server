@@ -42,6 +42,8 @@ pub struct ChargeExtra {
     pub success_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cancel_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

@@ -1725,6 +1725,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
+
+[[package]]
 name = "memchr"
 version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2397,10 +2403,12 @@ dependencies = [
  "chrono",
  "data-encoding",
  "dotenvy",
+ "md5",
  "openssl",
  "percent-encoding",
  "prisma-client-rust",
  "prisma-client-rust-cli",
+ "quick-xml",
  "rand 0.8.5",
  "reqwest 0.12.4",
  "serde",
@@ -2772,6 +2780,16 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d3a6e5838b60e0e8fa7a43f22ade549a37d61f8bdbe636d0d7816191de969c2"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]

@@ -129,7 +129,7 @@ pub async fn load_order_from_db(
 }
 
 pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, StatusCode> {
-    tracing::info!("create_order: {}", body);
+    tracing::info!(body, "create_order");
     let req_payload: CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
         tracing::error!("error parsing create_order request payload: {:?}", e);
         StatusCode::BAD_REQUEST
