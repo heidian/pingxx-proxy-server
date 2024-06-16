@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::charges::alipay::AlipayTradeStatus;
+use super::config::AlipayTradeStatus;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MapiRequestPayload {

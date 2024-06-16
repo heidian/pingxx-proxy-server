@@ -1,8 +1,9 @@
 use super::super::charge::CreateChargeRequestPayload;
+use super::config::WechatTradeStatus;
 use super::config::WxPubConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 #[derive(Deserialize, Serialize, Debug)]
 struct WxJSAPIResponse {
@@ -52,6 +53,26 @@ impl WxPub {
         let sign = format!("{:x}", sign).to_uppercase();
         tracing::debug!("wx jsapi sign: {}", sign);
         sign
+    }
+
+    fn verify_sign(m: &HashMap<String, String>, sign_key: &str) -> Result<bool, ()> {
+        let signature = m.get("sign").ok_or_else(|| {
+            tracing::error!("error getting sign");
+        })?;
+        let mut query_list = Vec::<String>::new();
+        m.iter().for_each(|(k, v)| {
+            if !v.is_empty() && k != "sign" {
+                let query = format!("{}={}", k, v.trim());
+                query_list.push(query);
+            }
+        });
+        query_list.sort();
+        let sign_sorted_source = format!("{}&key={}", query_list.join("&"), sign_key);
+        tracing::debug!("wx jsapi sign source: {}", sign_sorted_source);
+        let sign = md5::compute(sign_sorted_source.as_bytes());
+        let sign = format!("{:x}", sign).to_uppercase();
+        tracing::debug!("wx jsapi sign: {}", sign);
+        Ok(sign == *signature)
     }
 
     /**
@@ -155,6 +176,62 @@ impl WxPub {
         };
 
         Ok(res_json)
+    }
+
+    pub fn process_notify(config: WxPubConfig, payload: &str) -> Result<WechatTradeStatus, ()> {
+        let mut m = HashMap::<String, String>::new();
+        let mut parser = quick_xml::Reader::from_str(payload);
+        parser.config_mut().trim_text(true);
+        let _ = parser.read_event(); // Skip root element
+        loop {
+            match parser.read_event() {
+                Ok(quick_xml::events::Event::Start(ref e)) => {
+                    let key = String::from_utf8(e.name().0.to_vec()).unwrap();
+                    // let value = parser.read_text(e.name()).unwrap();
+                    // m.insert(key, value.as_ref().to_owned());
+                    let value = match parser.read_event() {
+                        Ok(quick_xml::events::Event::CData(cdata)) => {
+                            String::from_utf8(cdata.to_vec()).unwrap()
+                        }
+                        Ok(quick_xml::events::Event::Text(text)) => {
+                            text.unescape().unwrap().to_string()
+                        }
+                        _ => String::new(),
+                    };
+                    m.insert(key, value);
+                }
+                Ok(quick_xml::events::Event::Eof) => break,
+                Err(e) => {
+                    tracing::error!("error parsing xml: {}", e);
+                    return Err(());
+                }
+                _ => {}
+            }
+        }
+        tracing::debug!("wx pub notify payload: {:?}", m);
+
+        let verified = Self::verify_sign(&m, &config.wx_pub_key).map_err(|_| {
+            tracing::error!("verify rsa sign");
+        })?;
+
+        if !verified {
+            tracing::error!("wrong md5 sign");
+            return Err(());
+        }
+
+        if m.get("return_code") != Some(&"SUCCESS".to_string()) {
+            tracing::error!("return_code not SUCCESS");
+            return Err(());
+        }
+
+        let trade_status = WechatTradeStatus::from_str(m.get("result_code").unwrap().as_str())
+            .map_err(|_| {
+                tracing::error!("unknown wechat trade status");
+            })?;
+
+        tracing::info!("trade_status in verified notify payload: {:?}", trade_status);
+
+        Ok(trade_status)
     }
 }
 

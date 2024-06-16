@@ -7,6 +7,7 @@ use std::str::FromStr;
 use serde_json::json;
 
 use super::alipay::{self, AlipayPcDirectConfig, AlipayTradeStatus, AlipayWapConfig};
+use super::wechat::{self, WxPubConfig, WechatTradeStatus};
 use super::charge::{load_channel_params_from_db, PaymentChannel, ChargeResponsePayload};
 use super::order::OrderResponsePayload;
 
@@ -64,7 +65,7 @@ async fn process_notify(
     prisma_client: &crate::prisma::PrismaClient,
     charge_id: &str,
     payload: &str,
-) -> Result<(), StatusCode> {
+) -> Result<String, StatusCode> {
     let charge = prisma_client
         .charge()
         .find_unique(crate::prisma::charge::charge_id::equals(charge_id.into()))
@@ -101,17 +102,18 @@ async fn process_notify(
     })?;
 
     let channel_params = load_channel_params_from_db(prisma_client, sub_app.id, &channel).await?;
-    let trade_status = match channel {
+    let payment_success = match channel {
         PaymentChannel::AlipayPcDirect => {
             let config = serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params)
                 .map_err(|e| {
                     tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            alipay::AlipayPcDirect::process_notify(config, payload).map_err(|e| {
+            let trade_status = alipay::AlipayPcDirect::process_notify(config, payload).map_err(|e| {
                 tracing::error!("error processing alipay notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            })?;
+            trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished
         }
         PaymentChannel::AlipayWap => {
             let config = serde_json::from_value::<AlipayWapConfig>(channel_params.params)
@@ -119,18 +121,31 @@ async fn process_notify(
                     tracing::error!("error deserializing alipay_wap config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            alipay::AlipayWap::process_notify(config, payload).map_err(|e| {
+            let trade_status = alipay::AlipayWap::process_notify(config, payload).map_err(|e| {
                 tracing::error!("error processing alipay notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            })?;
+            trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished
         }
-        _ => {
-            tracing::error!("unsupported channel: {:?}", channel);
-            return Err(StatusCode::BAD_REQUEST);
+        PaymentChannel::WxPub => {
+            let config = serde_json::from_value::<WxPubConfig>(channel_params.params)
+                .map_err(|e| {
+                    tracing::error!("error deserializing wx_pub config: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            let trade_status = wechat::WxPub::process_notify(config, payload).map_err(|e| {
+                tracing::error!("error processing wechat notify: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            trade_status == WechatTradeStatus::Success
         }
+        // _ => {
+        //     tracing::error!("unsupported channel: {:?}", channel);
+        //     return Err(StatusCode::BAD_REQUEST);
+        // }
     };
 
-    if trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished {
+    if payment_success {
         // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
         order = prisma_client
             .order()
@@ -151,11 +166,21 @@ async fn process_notify(
                 tracing::error!("sql error: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
+
+        let _ = send_webhook(&app, &sub_app, &order, &charge).await;
     }
 
-    let _ = send_webhook(&app, &sub_app, &order, &charge).await;
-
-    Ok(())
+    match channel {
+        PaymentChannel::AlipayPcDirect => {
+            Ok("success".to_string())
+        }
+        PaymentChannel::AlipayWap => {
+            Ok("success".to_string())
+        }
+        PaymentChannel::WxPub => {
+            Ok("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>".to_string())
+        }
+    }
 }
 
 pub async fn create_charge_notify(
@@ -186,9 +211,8 @@ pub async fn create_charge_notify(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
-
-    Ok("success".to_string())
+    let return_body = process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
+    Ok(return_body)
 }
 
 pub async fn retry_charge_notify(
@@ -215,9 +239,8 @@ pub async fn retry_charge_notify(
     let charge_id = history.charge_id;
     let charge_notify_payload = history.data;
 
-    process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
-
-    Ok("success".to_string())
+    let return_body = process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
+    Ok(return_body)
 }
 
 #[allow(unreachable_code)]
