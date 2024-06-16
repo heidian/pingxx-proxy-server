@@ -52,12 +52,12 @@ impl OrderResponsePayload {
         sub_app: &crate::prisma::sub_app::Data,
     ) -> Self {
         Self {
-            id: order.order_id.clone(),
+            id: order.id.clone(),
             object: String::from("order"),
             created: order.created_at.timestamp() as i32,
-            app: app.key.clone(),
-            receipt_app: sub_app.key.clone(),
-            service_app: sub_app.key.clone(),
+            app: app.id.clone(),
+            receipt_app: sub_app.id.clone(),
+            service_app: sub_app.id.clone(),
             uid: order.uid.clone(),
             merchant_order_no: order.merchant_order_no.clone(),
             status: order.status.clone(),
@@ -90,7 +90,7 @@ pub async fn load_order_from_db(
 > {
     let order = prisma_client
         .order()
-        .find_unique(crate::prisma::order::order_id::equals(order_id.to_string()))
+        .find_unique(crate::prisma::order::id::equals(order_id.to_string()))
         .with(crate::prisma::order::sub_app::fetch())
         .with(crate::prisma::order::app::fetch())
         .with(
@@ -145,9 +145,9 @@ pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, St
     prisma_client
         .order()
         .create(
-            crate::prisma::app::key::equals(req_payload.app.clone()),
-            crate::prisma::sub_app::key::equals(req_payload.service_app.clone()),
             order_id.clone(),
+            crate::prisma::app::id::equals(req_payload.app.clone()),
+            crate::prisma::sub_app::id::equals(req_payload.service_app.clone()),
             req_payload.uid,
             req_payload.merchant_order_no,
             String::from("created"),
@@ -197,9 +197,8 @@ pub async fn retrieve_order(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
         let charge_response = ChargeResponsePayload {
-            id: charge.charge_id,
+            id: charge.id,
             object: "charge".to_string(),
-            is_valid: charge.is_valid,
             channel,
             amount: charge.amount,
             extra: charge.extra,

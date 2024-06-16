@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use super::{
     alipay::{self, AlipayPcDirectConfig, AlipayWapConfig},
-    wechat::{self, WxPubConfig},
     order::{load_order_from_db, OrderResponsePayload},
+    wechat::{self, WxPubConfig},
 };
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -57,7 +57,6 @@ pub struct CreateChargeRequestPayload {
 pub struct ChargeResponsePayload {
     pub id: String,
     pub object: String,
-    pub is_valid: bool,
     pub channel: PaymentChannel,
     pub amount: i32,
     pub extra: serde_json::Value,
@@ -66,13 +65,13 @@ pub struct ChargeResponsePayload {
 
 pub async fn load_channel_params_from_db(
     prisma_client: &crate::prisma::PrismaClient,
-    sub_app_id: i32,
+    sub_app_id: &str,
     channel: &PaymentChannel,
 ) -> Result<crate::prisma::channel_params::Data, StatusCode> {
     let config = prisma_client
         .channel_params()
         .find_unique(crate::prisma::channel_params::sub_app_id_channel(
-            sub_app_id,
+            sub_app_id.to_string(),
             channel.to_string(),
         ))
         .exec()
@@ -116,7 +115,7 @@ pub async fn create_charge(
         PaymentChannel::AlipayPcDirect => {
             let channel_params = load_channel_params_from_db(
                 &prisma_client,
-                sub_app.id,
+                &sub_app.id,
                 &PaymentChannel::AlipayPcDirect,
             )
             .await?;
@@ -130,22 +129,27 @@ pub async fn create_charge(
                 &order,
                 &charge_req_payload,
                 &notify_url,
-            ).await
+            )
+            .await
         }
         PaymentChannel::AlipayWap => {
-            let channel_params =
-                load_channel_params_from_db(&prisma_client, sub_app.id, &PaymentChannel::AlipayWap)
-                    .await?;
+            let channel_params = load_channel_params_from_db(
+                &prisma_client,
+                &sub_app.id,
+                &PaymentChannel::AlipayWap,
+            )
+            .await?;
             let config =
                 serde_json::from_value::<AlipayWapConfig>(channel_params.params).map_err(|e| {
                     tracing::error!("error deserializing alipay_wap config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url).await
+            alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url)
+                .await
         }
         PaymentChannel::WxPub => {
             let channel_params =
-                load_channel_params_from_db(&prisma_client, sub_app.id, &PaymentChannel::WxPub)
+                load_channel_params_from_db(&prisma_client, &sub_app.id, &PaymentChannel::WxPub)
                     .await?;
             let config =
                 serde_json::from_value::<WxPubConfig>(channel_params.params).map_err(|e| {
@@ -153,11 +157,10 @@ pub async fn create_charge(
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
             wechat::WxPub::create_credential(config, &order, &charge_req_payload, &notify_url).await
-        }
-        // _ => {
-        //     tracing::error!("create_charge: unsupported channel");
-        //     return Err(StatusCode::BAD_REQUEST);
-        // }
+        } // _ => {
+          //     tracing::error!("create_charge: unsupported channel");
+          //     return Err(StatusCode::BAD_REQUEST);
+          // }
     };
 
     let credential_object = credential_object.map_err(|_| {
@@ -187,9 +190,8 @@ pub async fn create_charge(
     let charge = prisma_client
         .charge()
         .create(
-            crate::prisma::order::order_id::equals(order_id),
-            charge_id,
-            true,
+            charge_id.clone(),
+            crate::prisma::order::id::equals(order_id),
             charge_req_payload.channel.to_string(),
             charge_req_payload.charge_amount,
             extra,
@@ -214,9 +216,8 @@ pub async fn create_charge(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let charge_response = ChargeResponsePayload {
-        id: charge.charge_id,
+        id: charge.id,
         object: "charge".to_string(),
-        is_valid: charge.is_valid,
         channel,
         amount: charge.amount,
         extra: charge.extra,

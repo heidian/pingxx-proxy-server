@@ -25,9 +25,8 @@ async fn send_webhook(
         tracing::error!("error parsing charge channel: {:?}", e);
     })?;
     let charge_response = ChargeResponsePayload {
-        id: charge.charge_id.clone(),
+        id: charge.id.clone(),
         object: "charge".to_string(),
-        is_valid: charge.is_valid,
         channel,
         amount: charge.amount,
         extra: charge.extra.clone(),
@@ -68,7 +67,7 @@ async fn process_notify(
 ) -> Result<String, StatusCode> {
     let charge = prisma_client
         .charge()
-        .find_unique(crate::prisma::charge::charge_id::equals(charge_id.into()))
+        .find_unique(crate::prisma::charge::id::equals(charge_id.into()))
         .with(
             crate::prisma::charge::order::fetch()
             .with(crate::prisma::order::sub_app::fetch())
@@ -101,7 +100,7 @@ async fn process_notify(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let channel_params = load_channel_params_from_db(prisma_client, sub_app.id, &channel).await?;
+    let channel_params = load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
     let payment_success = match channel {
         PaymentChannel::AlipayPcDirect => {
             let config = serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params)

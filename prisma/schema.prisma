@@ -9,8 +9,7 @@ datasource db {
 }
 
 model App {
-    id        Int      @id @default(autoincrement())
-    key       String   @unique
+    id        String   @id
     name      String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -19,10 +18,9 @@ model App {
 }
 
 model SubApp {
-    id        Int             @id @default(autoincrement())
-    appId     Int
+    id        String          @id
+    appId     String
     app       App             @relation(fields: [appId], references: [id], onDelete: Cascade)
-    key       String          @unique
     name      String
     createdAt DateTime        @default(now())
     updatedAt DateTime        @updatedAt
@@ -32,7 +30,7 @@ model SubApp {
 
 model ChannelParams {
     id        Int      @id @default(autoincrement())
-    subAppId  Int
+    subAppId  String
     subApp    SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
     channel   String
     params    Json
@@ -43,12 +41,11 @@ model ChannelParams {
 }
 
 model Order {
-    id                Int      @id @default(autoincrement())
-    appId             Int
+    id                String   @id
+    appId             String
     app               App      @relation(fields: [appId], references: [id], onDelete: Cascade)
-    subAppId          Int
+    subAppId          String
     subApp            SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
-    orderId           String   @unique
     uid               String
     merchant_order_no String
     status            String
@@ -70,17 +67,17 @@ model Order {
 }
 
 model Charge {
-    id         Int      @id @default(autoincrement())
-    orderId    Int
-    order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-    chargeId   String   @unique
-    isValid    Boolean
-    channel    String
-    amount     Int
-    extra      Json
-    credential Json
-    createdAt  DateTime @default(now())
-    updatedAt  DateTime @updatedAt
+    id           String   @id
+    orderId      String
+    order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    channel      String
+    amount       Int
+    extra        Json
+    credential   Json
+    failure_code String?
+    failure_msg  String?
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
 }
 
 model ChargeNotifyHistory {
