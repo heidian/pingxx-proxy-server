@@ -113,7 +113,7 @@ pub struct OpenApiNotifyPayload {
     pub trade_status: AlipayTradeStatus,
     pub out_trade_no: String,
     pub total_amount: String,
-    signagure: String,
+    signature: String,
     m: HashMap<String, String>,
 }
 
@@ -145,7 +145,7 @@ impl OpenApiNotifyPayload {
         }
 
         let sign_type = m.get("sign_type").ok_or_else(missing_params)?;
-        let signagure = m.get("sign").ok_or_else(missing_params)?;
+        let signature = m.get("sign").ok_or_else(missing_params)?;
         let trade_status = m.get("trade_status").ok_or_else(missing_params)?;
         let out_trade_no = m.get("out_trade_no").ok_or_else(missing_params)?;
         let total_amount = m.get("total_amount").ok_or_else(missing_params)?;
@@ -161,7 +161,7 @@ impl OpenApiNotifyPayload {
             trade_status: trade_status,
             out_trade_no: out_trade_no.to_owned(),
             total_amount: total_amount.to_owned(),
-            signagure: signagure.to_owned(),
+            signature: signature.to_owned(),
             m,
         })
     }
@@ -182,7 +182,7 @@ impl OpenApiNotifyPayload {
         let mut verifier = Verifier::new(MessageDigest::sha256(), &keypair)?;
         verifier.update(sorted_payload.as_bytes())?;
         let signature_bytes = data_encoding::BASE64
-            .decode(self.signagure.as_bytes())
+            .decode(self.signature.as_bytes())
             .unwrap_or_default();
         let result = verifier.verify(&signature_bytes)?;
         // tracing::debug!("verify result: {}", result);

@@ -1,80 +1,30 @@
 use super::super::charge::CreateChargeRequestPayload;
-use super::config::WechatTradeStatus;
-use super::config::WxPubConfig;
+use super::config::{WechatTradeStatus, WxPubConfig};
+use super::v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize, Debug)]
 struct WxJSAPIResponse {
     return_code: String,
     return_msg: String,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     appid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     mch_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     nonce_str: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     sign: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     result_code: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     err_code: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     err_code_des: Option<String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     trade_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     prepay_id: Option<String>,
 }
 
 pub struct WxPub {}
 
 impl WxPub {
-    /**
-     * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=4_3
-     */
-    fn create_sign(v: &serde_json::Value, sign_key: &str) -> String {
-        let m: HashMap<String, String> = serde_json::from_value(v.to_owned()).unwrap();
-        let mut query_list = Vec::<String>::new();
-        m.iter().for_each(|(k, v)| {
-            if !v.is_empty() && k != "sign" {
-                let query = format!("{}={}", k, v.trim());
-                query_list.push(query);
-            }
-        });
-        query_list.sort();
-        let sign_sorted_source = format!("{}&key={}", query_list.join("&"), sign_key);
-        tracing::debug!("wx jsapi sign source: {}", sign_sorted_source);
-        let sign = md5::compute(sign_sorted_source.as_bytes());
-        let sign = format!("{:x}", sign).to_uppercase();
-        tracing::debug!("wx jsapi sign: {}", sign);
-        sign
-    }
-
-    fn verify_sign(m: &HashMap<String, String>, sign_key: &str) -> Result<bool, ()> {
-        let signature = m.get("sign").ok_or_else(|| {
-            tracing::error!("error getting sign");
-        })?;
-        let mut query_list = Vec::<String>::new();
-        m.iter().for_each(|(k, v)| {
-            if !v.is_empty() && k != "sign" {
-                let query = format!("{}={}", k, v.trim());
-                query_list.push(query);
-            }
-        });
-        query_list.sort();
-        let sign_sorted_source = format!("{}&key={}", query_list.join("&"), sign_key);
-        tracing::debug!("wx jsapi sign source: {}", sign_sorted_source);
-        let sign = md5::compute(sign_sorted_source.as_bytes());
-        let sign = format!("{:x}", sign).to_uppercase();
-        tracing::debug!("wx jsapi sign: {}", sign);
-        Ok(sign == *signature)
-    }
-
     /**
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=7_7&index=6
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=9_1
@@ -86,52 +36,35 @@ impl WxPub {
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
-        // convert timestamp (in seconds) to yyyyMMddHHmmss, timestamp is stored in order.time_expire
-        let time_expire =
-            chrono::DateTime::<chrono::Utc>::from_timestamp(order.time_expire as i64, 0)
-                .ok_or_else(|| tracing::error!("convert timestamp to datetime"))?
-                .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
-                .format("%Y%m%d%H%M%S")
-                .to_string();
-        let total_fee = format!("{}", charge_req_payload.charge_amount);
         let open_id = match charge_req_payload.extra.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
             None => "".to_string(),
         };
-        // create 32 charactors nonce string
-        let nonce_str = (0..32)
-            .map(|_| {
-                let idx = rand::random::<usize>() % 62;
-                if idx < 10 {
-                    (idx as u8 + 48) as char
-                } else if idx < 36 {
-                    (idx as u8 + 55) as char
-                } else {
-                    (idx as u8 + 61) as char
-                }
-            })
-            .collect::<String>();
-        let mut payload = json!({
-            "appid": &config.wx_pub_app_id,
-            "mch_id": &config.wx_pub_mch_id,
-            "nonce_str": &nonce_str,
-            "sign": "",
-            // "sign_type": "MD5",
-            "body": &order.body,
-            "out_trade_no": &order.merchant_order_no,
-            "total_fee": &total_fee,
-            "spbill_create_ip": &order.client_ip,
-            "time_expire": &time_expire,
-            "notify_url": notify_url,
-            "trade_type": "JSAPI",
-            "openid": &open_id,
-        });
-        let sign = Self::create_sign(&payload, &config.wx_pub_key);
-        payload["sign"] = sign.into();
-
-        let xml_payload = quick_xml::se::to_string_with_root("xml", &payload).map_err(|e| {
-            tracing::error!("xml payload: {}", e);
+        let mut v2_api_payload = V2ApiRequestPayload::new(
+            _charge_id,
+            &config.wx_pub_app_id,
+            &config.wx_pub_mch_id,
+            &open_id,
+            &order.client_ip,
+            notify_url,
+            &order.merchant_order_no,
+            charge_req_payload.charge_amount,
+            order.time_expire,
+            &order.subject,
+            &order.body,
+        )
+        .map_err(|_| {
+            tracing::error!("invalid v2 api payload");
         })?;
+
+        v2_api_payload.sign_md5(&config.wx_pub_key).map_err(|e| {
+            tracing::error!("sign_md5 failed: {}", e);
+        })?;
+
+        let xml_payload =
+            quick_xml::se::to_string_with_root("xml", &v2_api_payload).map_err(|e| {
+                tracing::error!("xml payload: {}", e);
+            })?;
         tracing::debug!("wx jsapi xml payload: {}", xml_payload);
 
         let res = reqwest::Client::new()
@@ -166,12 +99,13 @@ impl WxPub {
             let mut res_json = json!({
                 "appId": res_obj.appid,
                 "timeStamp": chrono::Utc::now().timestamp().to_string(),
-                "nonceStr": &nonce_str,
+                "nonceStr": &v2_api_payload.nonce_str,
                 "package": format!("prepay_id={}", res_obj.prepay_id.as_ref().unwrap_or(&"".to_string())),
                 "signType": "MD5",
                 "paySign": "",
             });
-            let sign = Self::create_sign(&res_json, &config.wx_pub_key);
+            let m: HashMap<String, String> = serde_json::from_value(res_json.to_owned()).unwrap();
+            let sign = v2api::v2api_md5::sign(&m, &config.wx_pub_key);
             res_json["paySign"] = serde_json::Value::String(sign);
             res_json
         };
@@ -180,62 +114,15 @@ impl WxPub {
     }
 
     pub fn process_notify(config: WxPubConfig, payload: &str) -> Result<WechatTradeStatus, ()> {
-        let mut m = HashMap::<String, String>::new();
-        let mut parser = quick_xml::Reader::from_str(payload);
-        parser.config_mut().trim_text(true);
-        let _ = parser.read_event(); // Skip root element
-        loop {
-            match parser.read_event() {
-                Ok(quick_xml::events::Event::Start(ref e)) => {
-                    let key = String::from_utf8(e.name().0.to_vec()).unwrap();
-                    // let value = parser.read_text(e.name()).unwrap();
-                    // m.insert(key, value.as_ref().to_owned());
-                    let value = match parser.read_event() {
-                        Ok(quick_xml::events::Event::CData(cdata)) => {
-                            String::from_utf8(cdata.to_vec()).unwrap()
-                        }
-                        Ok(quick_xml::events::Event::Text(text)) => {
-                            text.unescape().unwrap().to_string()
-                        }
-                        _ => String::new(),
-                    };
-                    m.insert(key, value);
-                }
-                Ok(quick_xml::events::Event::Eof) => break,
-                Err(e) => {
-                    tracing::error!("error parsing xml: {}", e);
-                    return Err(());
-                }
-                _ => {}
-            }
-        }
-        tracing::debug!("wx pub notify payload: {:?}", m);
-
-        let verified = Self::verify_sign(&m, &config.wx_pub_key).map_err(|_| {
-            tracing::error!("verify rsa sign");
+        let notify_payload = V2ApiNotifyPayload::new(payload).map_err(|_| {
+            tracing::error!("invalid notify payload");
         })?;
-
+        let verified = notify_payload.verify_md5_sign(&config.wx_pub_key);
         if !verified {
             tracing::error!("wrong md5 sign");
             return Err(());
         }
-
-        if m.get("return_code") != Some(&"SUCCESS".to_string()) {
-            tracing::error!("return_code not SUCCESS");
-            return Err(());
-        }
-
-        let trade_status = WechatTradeStatus::from_str(m.get("result_code").unwrap().as_str())
-            .map_err(|_| {
-                tracing::error!("unknown wechat trade status");
-            })?;
-
-        tracing::info!(
-            "trade_status in verified notify payload: {:?}",
-            trade_status
-        );
-
-        Ok(trade_status)
+        Ok(notify_payload.trade_status)
     }
 }
 
