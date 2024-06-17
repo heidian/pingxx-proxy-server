@@ -80,6 +80,7 @@ impl WxPub {
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=9_1
      */
     pub async fn create_credential(
+        _charge_id: &str,
         config: WxPubConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
@@ -229,7 +230,10 @@ impl WxPub {
                 tracing::error!("unknown wechat trade status");
             })?;
 
-        tracing::info!("trade_status in verified notify payload: {:?}", trade_status);
+        tracing::info!(
+            "trade_status in verified notify payload: {:?}",
+            trade_status
+        );
 
         Ok(trade_status)
     }

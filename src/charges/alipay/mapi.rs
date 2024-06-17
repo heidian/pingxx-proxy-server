@@ -30,6 +30,49 @@ pub struct MapiRequestPayload {
 }
 
 impl MapiRequestPayload {
+    pub fn new(
+        _charge_id: &str,         //
+        service: &str,           // create_direct_pay_by_user | alipay.wap.create.direct.pay.by.user
+        alipay_pid: &str,        // 合作者身份 ID, 商家唯一 ID
+        return_url: &str,        // 支付成功跳转
+        notify_url: &str,        // 异步通知
+        merchant_order_no: &str, // 商户订单号
+        charge_amount: i32,      // 支付金额, 精确到分
+        time_expire: i32,        // 过期时间 timestamp 精确到秒
+        subject: &str,           // 标题
+        body: &str,              // 详情
+    ) -> Result<Self, ()> {
+        let total_fee = format!("{:.2}", charge_amount as f64 / 100.0);
+        let it_b_pay = {
+            let now = chrono::Utc::now().timestamp() as i32;
+            if time_expire > now {
+                let seconds = time_expire - now;
+                format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
+            } else {
+                tracing::error!("MapiRequestPayload: expire_in_seconds < now");
+                return Err(());
+            }
+        };
+        let payload = MapiRequestPayload {
+            channel_url: String::from("https://mapi.alipay.com/gateway.do"),
+            service: String::from(service),
+            _input_charset: String::from("utf-8"),
+            return_url: return_url.to_string(),
+            notify_url: notify_url.to_string(),
+            partner: alipay_pid.to_string(),
+            out_trade_no: merchant_order_no.to_string(),
+            subject: subject.to_string(),
+            body: body.to_string(),
+            total_fee,
+            payment_type: String::from("1"),
+            seller_id: alipay_pid.to_string(),
+            it_b_pay,
+            sign: String::from(""),
+            sign_type: String::from("RSA"),
+        };
+        Ok(payload)
+    }
+
     fn get_sorted_sign_source(&self) -> String {
         // 这里 deserialize 不会出问题
         let v = serde_json::to_value(&self).unwrap();

@@ -125,6 +125,7 @@ pub async fn create_charge(
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
             alipay::AlipayPcDirect::create_credential(
+                &charge_id,
                 config,
                 &order,
                 &charge_req_payload,
@@ -144,8 +145,14 @@ pub async fn create_charge(
                     tracing::error!("error deserializing alipay_wap config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            alipay::AlipayWap::create_credential(config, &order, &charge_req_payload, &notify_url)
-                .await
+            alipay::AlipayWap::create_credential(
+                &charge_id,
+                config,
+                &order,
+                &charge_req_payload,
+                &notify_url,
+            )
+            .await
         }
         PaymentChannel::WxPub => {
             let channel_params =
@@ -156,7 +163,14 @@ pub async fn create_charge(
                     tracing::error!("error deserializing wx_pub config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            wechat::WxPub::create_credential(config, &order, &charge_req_payload, &notify_url).await
+            wechat::WxPub::create_credential(
+                &charge_id,
+                config,
+                &order,
+                &charge_req_payload,
+                &notify_url,
+            )
+            .await
         } // _ => {
           //     tracing::error!("create_charge: unsupported channel");
           //     return Err(StatusCode::BAD_REQUEST);
