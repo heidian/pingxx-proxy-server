@@ -13,18 +13,18 @@ pub struct WxPubConfig {
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
-pub enum WechatTradeStatus {
+pub enum WeixinTradeStatus {
     Success,
     Fail,
 }
 
-impl FromStr for WechatTradeStatus {
+impl FromStr for WeixinTradeStatus {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "SUCCESS" => Ok(WechatTradeStatus::Success),
-            "FAIL" => Ok(WechatTradeStatus::Fail),
-            _ => Err(format!("unknown wechat trade status: {}", s)),
+            "SUCCESS" => Ok(WeixinTradeStatus::Success),
+            "FAIL" => Ok(WeixinTradeStatus::Fail),
+            _ => Err(format!("unknown weixin trade status: {}", s)),
         }
     }
 }

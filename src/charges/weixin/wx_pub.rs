@@ -1,5 +1,5 @@
 use super::super::charge::CreateChargeRequestPayload;
-use super::config::{WechatTradeStatus, WxPubConfig};
+use super::config::{WeixinTradeStatus, WxPubConfig};
 use super::v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -113,7 +113,7 @@ impl WxPub {
         Ok(res_json)
     }
 
-    pub fn process_notify(config: WxPubConfig, payload: &str) -> Result<WechatTradeStatus, ()> {
+    pub fn process_notify(config: WxPubConfig, payload: &str) -> Result<WeixinTradeStatus, ()> {
         let notify_payload = V2ApiNotifyPayload::new(payload).map_err(|_| {
             tracing::error!("invalid notify payload");
         })?;

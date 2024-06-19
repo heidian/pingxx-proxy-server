@@ -1,4 +1,4 @@
-use super::config::WechatTradeStatus;
+use super::config::WeixinTradeStatus;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
@@ -121,7 +121,7 @@ impl V2ApiRequestPayload {
 }
 
 pub struct V2ApiNotifyPayload {
-    pub trade_status: WechatTradeStatus,
+    pub trade_status: WeixinTradeStatus,
     pub out_trade_no: String,
     pub total_amount: String,
     signature: String,
@@ -166,9 +166,9 @@ impl V2ApiNotifyPayload {
             return Err(());
         }
 
-        let trade_status = WechatTradeStatus::from_str(m.get("result_code").unwrap().as_str())
+        let trade_status = WeixinTradeStatus::from_str(m.get("result_code").unwrap().as_str())
             .map_err(|_| {
-                tracing::error!("unknown wechat trade status");
+                tracing::error!("unknown weixin trade status");
             })?;
         let out_trade_no = m.get("out_trade_no").unwrap().as_str().to_owned();
         let total_amount = m.get("total_fee").unwrap().as_str().to_owned();

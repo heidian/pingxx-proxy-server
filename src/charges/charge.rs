@@ -6,7 +6,7 @@ use std::str::FromStr;
 use super::{
     alipay::{self, AlipayPcDirectConfig, AlipayWapConfig},
     order::{load_order_from_db, OrderResponsePayload},
-    wechat::{self, WxPubConfig},
+    weixin::{self, WxPubConfig},
 };
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -163,7 +163,7 @@ pub async fn create_charge(
                     tracing::error!("error deserializing wx_pub config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            wechat::WxPub::create_credential(
+            weixin::WxPub::create_credential(
                 &charge_id,
                 config,
                 &order,

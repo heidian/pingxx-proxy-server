@@ -7,7 +7,7 @@ use std::str::FromStr;
 use serde_json::json;
 
 use super::alipay::{self, AlipayPcDirectConfig, AlipayTradeStatus, AlipayWapConfig};
-use super::wechat::{self, WxPubConfig, WechatTradeStatus};
+use super::weixin::{self, WxPubConfig, WeixinTradeStatus};
 use super::charge::{load_channel_params_from_db, PaymentChannel, ChargeResponsePayload};
 use super::order::OrderResponsePayload;
 
@@ -132,11 +132,11 @@ async fn process_notify(
                     tracing::error!("error deserializing wx_pub config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            let trade_status = wechat::WxPub::process_notify(config, payload).map_err(|e| {
-                tracing::error!("error processing wechat notify: {:?}", e);
+            let trade_status = weixin::WxPub::process_notify(config, payload).map_err(|e| {
+                tracing::error!("error processing weixin notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
-            trade_status == WechatTradeStatus::Success
+            trade_status == WeixinTradeStatus::Success
         }
         // _ => {
         //     tracing::error!("unsupported channel: {:?}", channel);
