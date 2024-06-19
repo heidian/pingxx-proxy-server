@@ -132,6 +132,10 @@ pub async fn create_charge(
                 &notify_url,
             )
             .await
+            .map_err(|e| {
+                tracing::error!("error creating alipay_pc_direct credential: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
         }
         PaymentChannel::AlipayWap => {
             let channel_params = load_channel_params_from_db(
@@ -153,6 +157,10 @@ pub async fn create_charge(
                 &notify_url,
             )
             .await
+            .map_err(|e| {
+                tracing::error!("error creating alipay_wap credential: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
         }
         PaymentChannel::WxPub => {
             let channel_params =
@@ -171,16 +179,12 @@ pub async fn create_charge(
                 &notify_url,
             )
             .await
-        } // _ => {
-          //     tracing::error!("create_charge: unsupported channel");
-          //     return Err(StatusCode::BAD_REQUEST);
-          // }
+            .map_err(|e| {
+                tracing::error!("error creating wx_pub credential: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+        }
     };
-
-    let credential_object = credential_object.map_err(|_| {
-        tracing::error!("create_credential failed");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
 
     let credential = {
         let mut credential = json!({

@@ -1,5 +1,5 @@
 use super::super::charge::CreateChargeRequestPayload;
-use super::config::{WeixinTradeStatus, WxPubConfig};
+use super::config::{WeixinError, WeixinTradeStatus, WxPubConfig};
 use super::v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -35,7 +35,7 @@ impl WxPub {
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
         notify_url: &str,
-    ) -> Result<serde_json::Value, ()> {
+    ) -> Result<serde_json::Value, WeixinError> {
         let open_id = match charge_req_payload.extra.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
             None => "".to_string(),
@@ -52,77 +52,66 @@ impl WxPub {
             order.time_expire,
             &order.subject,
             &order.body,
-        )
-        .map_err(|_| {
-            tracing::error!("invalid v2 api payload");
-        })?;
+        )?;
 
-        v2_api_payload.sign_md5(&config.wx_pub_key).map_err(|e| {
-            tracing::error!("sign_md5 failed: {}", e);
-        })?;
+        v2_api_payload.sign_md5(&config.wx_pub_key)?;
 
-        let xml_payload =
-            quick_xml::se::to_string_with_root("xml", &v2_api_payload).map_err(|e| {
-                tracing::error!("xml payload: {}", e);
-            })?;
-        tracing::debug!("wx jsapi xml payload: {}", xml_payload);
+        let xml_payload = quick_xml::se::to_string_with_root("xml", &v2_api_payload)
+            .map_err(|e| WeixinError::MalformedPayload(format!("malformed xml payload: {}", e)))?;
 
         let res = reqwest::Client::new()
             .post("https://api.mch.weixin.qq.com/pay/unifiedorder")
             .body(xml_payload)
             .send()
             .await
-            .map_err(|e| tracing::error!("request error: {}", e))?;
-        let res_text = res
-            .text()
-            .await
-            .map_err(|e| tracing::error!("error parsing response: {}", e))?;
-        tracing::debug!("wx jsapi response: {:?}", res_text);
+            .map_err(|e| WeixinError::Unknown(format!("error request unifiedorder api: {}", e)))?;
+        let res_text = res.text().await.map_err(|e| {
+            WeixinError::Unknown(format!("error parse unifiedorder response: {}", e))
+        })?;
+        tracing::debug!("unifiedorder response: {:?}", res_text);
 
-        let res_json = {
-            let res_obj: WxJSAPIResponse = quick_xml::de::from_str(&res_text).map_err(|e| {
-                tracing::error!("error parsing WxJSAPIResponse: {}", e);
-            })?;
-            tracing::debug!("WxJSAPIResponse: {:?}", &res_obj);
-            if res_obj.return_code != "SUCCESS" {
-                tracing::error!("wx jsapi response error: {}", &res_obj.return_msg);
-                return Err(());
-            }
-            if res_obj.result_code != Some("SUCCESS".to_string()) {
-                tracing::error!(
-                    "wx jsapi response error: {}",
-                    res_obj.err_code_des.as_ref().unwrap()
-                );
-                return Err(());
-            }
-            /* paySign 不是用前面的 sign, 需要重新生成 */
-            let mut res_json = json!({
-                "appId": res_obj.appid,
-                "timeStamp": chrono::Utc::now().timestamp().to_string(),
-                "nonceStr": &v2_api_payload.nonce_str,
-                "package": format!("prepay_id={}", res_obj.prepay_id.as_ref().unwrap_or(&"".to_string())),
-                "signType": "MD5",
-                "paySign": "",
-            });
-            let m: HashMap<String, String> = serde_json::from_value(res_json.to_owned()).unwrap();
-            let sign = v2api::v2api_md5::sign(&m, &config.wx_pub_key);
-            res_json["paySign"] = serde_json::Value::String(sign);
-            res_json
-        };
+        let res_obj: WxJSAPIResponse = quick_xml::de::from_str(&res_text).map_err(|e| {
+            WeixinError::MalformedPayload(format!("error deserialize WxJSAPIResponse: {}", e))
+        })?;
+        if res_obj.return_code != "SUCCESS" {
+            return Err(WeixinError::Unknown(format!(
+                "unifiedorder return_code != SUCCESS: {}",
+                &res_obj.return_msg
+            )));
+        }
+        if res_obj.result_code != Some("SUCCESS".to_string()) {
+            return Err(WeixinError::Unknown(format!(
+                "unifiedorder result_code != SUCCESS: {:?}",
+                res_obj.err_code_des.as_ref()
+            )));
+        }
+
+        /* paySign 不是用前面的 sign, 需要重新生成 */
+        let mut res_json = json!({
+            "appId": res_obj.appid,
+            "timeStamp": chrono::Utc::now().timestamp().to_string(),
+            "nonceStr": &v2_api_payload.nonce_str,
+            "package": format!("prepay_id={}", res_obj.prepay_id.as_ref().unwrap_or(&"".to_string())),
+            "signType": "MD5",
+            "paySign": "",
+        });
+        let m: HashMap<String, String> = serde_json::from_value(res_json.to_owned()).unwrap();
+        let signature = v2api::v2api_md5::sign(&m, &config.wx_pub_key);
+        res_json["paySign"] = serde_json::Value::String(signature);
 
         Ok(res_json)
     }
 
-    pub fn process_notify(config: WxPubConfig, payload: &str) -> Result<WeixinTradeStatus, ()> {
-        let notify_payload = V2ApiNotifyPayload::new(payload).map_err(|_| {
-            tracing::error!("invalid notify payload");
-        })?;
-        let verified = notify_payload.verify_md5_sign(&config.wx_pub_key);
+    pub fn process_notify(
+        config: WxPubConfig,
+        payload: &str,
+    ) -> Result<WeixinTradeStatus, WeixinError> {
+        let notify_payload = V2ApiNotifyPayload::new(payload)?;
+        let verified = notify_payload.verify_md5_sign(&config.wx_pub_key)?;
         if !verified {
-            tracing::error!("wrong md5 sign");
-            return Err(());
+            return Err(WeixinError::MalformedPayload("wrong md5 sign".into()));
         }
-        Ok(notify_payload.trade_status)
+        Ok(notify_payload.status)
     }
 }
 

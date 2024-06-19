@@ -192,7 +192,7 @@ impl OpenApiNotifyPayload {
             .map_err(|_| AlipayError::MalformedPayload("invalid total_amount".into()))?
             * 100.0) as i32;
 
-        Ok(OpenApiNotifyPayload {
+        Ok(Self {
             status: trade_status,
             merchant_order_no: out_trade_no.to_owned(),
             amount,

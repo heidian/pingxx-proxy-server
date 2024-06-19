@@ -1,4 +1,4 @@
-use super::config::WeixinTradeStatus;
+use super::config::{WeixinError, WeixinTradeStatus};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
@@ -69,9 +69,9 @@ impl V2ApiRequestPayload {
         time_expire: i32,        // 过期时间 timestamp 精确到秒
         _subject: &str,          // 标题
         body: &str,              // 详情
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, WeixinError> {
         let time_expire = chrono::DateTime::<chrono::Utc>::from_timestamp(time_expire as i64, 0)
-            .ok_or_else(|| tracing::error!("convert timestamp to datetime"))?
+            .ok_or_else(|| WeixinError::MalformedPayload("can't convert timestamp to datetime".into()))?
             .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
             .format("%Y%m%d%H%M%S")
             .to_string();
@@ -110,7 +110,7 @@ impl V2ApiRequestPayload {
     /**
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=4_3
      */
-    pub fn sign_md5(&mut self, sign_key: &str) -> Result<String, String> {
+    pub fn sign_md5(&mut self, sign_key: &str) -> Result<String, WeixinError> {
         // 这里 deserialize 不会出问题
         let v = serde_json::to_value(&self).unwrap();
         let m: HashMap<String, String> = serde_json::from_value(v.to_owned()).unwrap();
@@ -121,15 +121,15 @@ impl V2ApiRequestPayload {
 }
 
 pub struct V2ApiNotifyPayload {
-    pub trade_status: WeixinTradeStatus,
-    pub out_trade_no: String,
-    pub total_amount: String,
+    pub status: WeixinTradeStatus,
+    pub merchant_order_no: String,
+    pub amount: i32,
     signature: String,
     m: HashMap<String, String>,
 }
 
 impl V2ApiNotifyPayload {
-    pub fn new(payload: &str) -> Result<Self, ()> {
+    pub fn new(payload: &str) -> Result<Self, WeixinError> {
         let mut m = HashMap::<String, String>::new();
         let mut parser = quick_xml::Reader::from_str(payload);
         parser.config_mut().trim_text(true);
@@ -153,39 +153,52 @@ impl V2ApiNotifyPayload {
                 }
                 Ok(quick_xml::events::Event::Eof) => break,
                 Err(e) => {
-                    tracing::error!("error parsing xml: {}", e);
-                    return Err(());
+                    return Err(WeixinError::MalformedPayload(format!(
+                        "error parsing xml {}",
+                        e
+                    )))
                 }
                 _ => {}
             }
         }
-        tracing::debug!("wx pub notify payload: {:?}", m);
 
         if m.get("return_code") != Some(&"SUCCESS".to_string()) {
-            tracing::error!("return_code not SUCCESS");
-            return Err(());
+            return Err(WeixinError::MalformedPayload(
+                "return_code not SUCCESS".into(),
+            ));
         }
 
-        let trade_status = WeixinTradeStatus::from_str(m.get("result_code").unwrap().as_str())
-            .map_err(|_| {
-                tracing::error!("unknown weixin trade status");
-            })?;
-        let out_trade_no = m.get("out_trade_no").unwrap().as_str().to_owned();
-        let total_amount = m.get("total_fee").unwrap().as_str().to_owned();
-        let signature = m.remove("sign").ok_or_else(|| {
-            tracing::error!("no sign in notify payload");
-        })?;
+        fn missing_params() -> WeixinError {
+            WeixinError::MalformedPayload("missing required params".into())
+        }
+
+        let signature = m.get("signature").ok_or_else(missing_params)?;
+        let trade_status = m.get("trade_status").ok_or_else(missing_params)?;
+        let out_trade_no = m.get("out_trade_no").ok_or_else(missing_params)?;
+        let total_fee = m.get("total_fee").ok_or_else(missing_params)?;
+
+        let trade_status = WeixinTradeStatus::from_str(trade_status)
+            .map_err(|_| WeixinError::MalformedPayload("unknown trade_status".into()))?;
+
+        let amount = (total_fee
+            .parse::<f64>()
+            .map_err(|_| WeixinError::MalformedPayload("invalid total_fee".into()))?
+            * 100.0) as i32;
 
         Ok(Self {
-            trade_status,
-            out_trade_no,
-            total_amount,
-            signature,
+            status: trade_status,
+            merchant_order_no: out_trade_no.to_owned(),
+            amount,
+            signature: signature.to_owned(),
             m,
         })
     }
 
-    pub fn verify_md5_sign(&self, public_key: &str) -> bool {
-        v2api_md5::verify(&self.m, &self.signature, public_key)
+    pub fn verify_md5_sign(&self, public_key: &str) -> Result<bool, WeixinError> {
+        let mut m = self.m.clone();
+        // k != "sign";
+        m.remove("sign");
+        let verified = v2api_md5::verify(&self.m, &self.signature, public_key);
+        Ok(verified)
     }
 }
