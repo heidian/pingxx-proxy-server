@@ -12,7 +12,6 @@ impl AlipayWap {
         config: AlipayWapConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-        notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
         let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
@@ -22,8 +21,7 @@ impl AlipayWap {
             charge_id,
             "alipay.wap.create.direct.pay.by.user",
             &config.alipay_pid,
-            return_url.as_str(),
-            notify_url,
+            &return_url,
             &order.merchant_order_no,
             charge_req_payload.charge_amount,
             order.time_expire,
@@ -46,7 +44,6 @@ impl AlipayWap {
         config: AlipayWapConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-        notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
         let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
@@ -57,8 +54,7 @@ impl AlipayWap {
             "alipay.trade.wap.pay",
             &config.alipay_app_id,
             &config.alipay_pid,
-            return_url.as_str(),
-            notify_url,
+            &return_url,
             &order.merchant_order_no,
             charge_req_payload.charge_amount,
             order.time_expire,
@@ -81,23 +77,14 @@ impl AlipayWap {
         config: AlipayWapConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-        notify_url: &str,
     ) -> Result<serde_json::Value, ()> {
         match config.alipay_version {
-            AlipayApiType::MAPI => Self::create_mapi_credential(
-                charge_id,
-                config,
-                order,
-                charge_req_payload,
-                notify_url,
-            ),
-            AlipayApiType::OPENAPI => Self::create_openapi_credential(
-                charge_id,
-                config,
-                order,
-                charge_req_payload,
-                notify_url,
-            ),
+            AlipayApiType::MAPI => {
+                Self::create_mapi_credential(charge_id, config, order, charge_req_payload)
+            }
+            AlipayApiType::OPENAPI => {
+                Self::create_openapi_credential(charge_id, config, order, charge_req_payload)
+            }
         }
     }
 

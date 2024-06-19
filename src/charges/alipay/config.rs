@@ -94,18 +94,18 @@ impl FromStr for AlipayTradeStatus {
 pub enum AlipayError {
     #[error("malformed request payload: {0}")]
     MalformedPayload(String),
-    #[error("invalid alipay config: {0}")]
-    InvalidConfig(String),
+    #[error("internal error: {0}")]
+    InternalError(String),
 }
 
 impl From<openssl::error::ErrorStack> for AlipayError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        AlipayError::InvalidConfig(format!("[openssl] {:?}", e))
+        AlipayError::InternalError(format!("[openssl] {:?}", e))
     }
 }
 
 impl From<data_encoding::DecodeError> for AlipayError {
     fn from(e: data_encoding::DecodeError) -> Self {
-        AlipayError::InvalidConfig(format!("[base64] {:?}", e))
+        AlipayError::InternalError(format!("[base64] {:?}", e))
     }
 }

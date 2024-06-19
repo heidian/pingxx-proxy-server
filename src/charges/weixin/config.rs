@@ -31,9 +31,7 @@ impl FromStr for WeixinTradeStatus {
 #[derive(Error, Debug)]
 pub enum WeixinError {
     #[error("malformed request payload: {0}")]
-    MalformedPayload(String), // 请求参数问题
-    // #[error("invalid weixin config: {0}")]
-    // InvalidConfig(String), // 渠道配置问题
-    #[error("unknown: {0}")]
-    Unknown(String), // 无法处理的问题
+    MalformedPayload(String),
+    #[error("internal error: {0}")]
+    InternalError(String),
 }

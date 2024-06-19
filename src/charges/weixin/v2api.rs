@@ -6,6 +6,7 @@ pub mod v2api_md5 {
     use std::collections::HashMap;
     /**
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=4_3
+     * 对 m 的所有字段进行签名, 所以 m 里面不能包含不需要签名的字段比如 sign, paySign, 或者他们需要为空
      */
     pub fn sign(m: &HashMap<String, String>, sign_key: &str) -> String {
         let mut query_list = Vec::<String>::new();
@@ -58,12 +59,11 @@ pub struct V2ApiRequestPayload {
 
 impl V2ApiRequestPayload {
     pub fn new(
-        _charge_id: &str,        //
+        charge_id: &str,        //
         wx_pub_app_id: &str,     // 微信公众号 app id
         wx_pub_mch_id: &str,     // 微信支付商户 id
         open_id: &str,           // 支付成功跳转
         client_ip: &str,         // 客户端 IP
-        notify_url: &str,        // 异步通知
         merchant_order_no: &str, // 商户订单号
         charge_amount: i32,      // 支付金额, 精确到分
         time_expire: i32,        // 过期时间 timestamp 精确到秒
@@ -100,7 +100,7 @@ impl V2ApiRequestPayload {
             total_fee,
             spbill_create_ip: client_ip.to_string(),
             time_expire,
-            notify_url: notify_url.to_string(),
+            notify_url: crate::utils::notify_url(charge_id),
             trade_type: String::from("JSAPI"),
             openid: open_id.to_string(),
         };

@@ -34,7 +34,6 @@ impl WxPub {
         config: WxPubConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-        notify_url: &str,
     ) -> Result<serde_json::Value, WeixinError> {
         let open_id = match charge_req_payload.extra.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
@@ -46,7 +45,6 @@ impl WxPub {
             &config.wx_pub_mch_id,
             &open_id,
             &order.client_ip,
-            notify_url,
             &order.merchant_order_no,
             charge_req_payload.charge_amount,
             order.time_expire,
@@ -64,9 +62,11 @@ impl WxPub {
             .body(xml_payload)
             .send()
             .await
-            .map_err(|e| WeixinError::Unknown(format!("error request unifiedorder api: {}", e)))?;
+            .map_err(|e| {
+                WeixinError::InternalError(format!("error request unifiedorder api: {}", e))
+            })?;
         let res_text = res.text().await.map_err(|e| {
-            WeixinError::Unknown(format!("error parse unifiedorder response: {}", e))
+            WeixinError::InternalError(format!("error parse unifiedorder response: {}", e))
         })?;
         tracing::debug!("unifiedorder response: {:?}", res_text);
 
@@ -74,13 +74,13 @@ impl WxPub {
             WeixinError::MalformedPayload(format!("error deserialize WxJSAPIResponse: {}", e))
         })?;
         if res_obj.return_code != "SUCCESS" {
-            return Err(WeixinError::Unknown(format!(
+            return Err(WeixinError::InternalError(format!(
                 "unifiedorder return_code != SUCCESS: {}",
                 &res_obj.return_msg
             )));
         }
         if res_obj.result_code != Some("SUCCESS".to_string()) {
-            return Err(WeixinError::Unknown(format!(
+            return Err(WeixinError::InternalError(format!(
                 "unifiedorder result_code != SUCCESS: {:?}",
                 res_obj.err_code_des.as_ref()
             )));
@@ -93,7 +93,7 @@ impl WxPub {
             "nonceStr": &v2_api_payload.nonce_str,
             "package": format!("prepay_id={}", res_obj.prepay_id.as_ref().unwrap_or(&"".to_string())),
             "signType": "MD5",
-            "paySign": "",
+            // "paySign": "",
         });
         let m: HashMap<String, String> = serde_json::from_value(res_json.to_owned()).unwrap();
         let signature = v2api::v2api_md5::sign(&m, &config.wx_pub_key);

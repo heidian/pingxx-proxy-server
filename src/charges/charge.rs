@@ -100,10 +100,6 @@ pub async fn create_charge(
         })?;
     let charge_id = crate::utils::generate_id("ch_");
 
-    let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
-    let notify_url = format!("{}/notify/charges/{}", charge_notify_origin, charge_id);
-    // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
-
     let prisma_client = crate::prisma::new_client().await.map_err(|e| {
         tracing::error!("error getting prisma client: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -129,7 +125,6 @@ pub async fn create_charge(
                 config,
                 &order,
                 &charge_req_payload,
-                &notify_url,
             )
             .await
             .map_err(|e| {
@@ -149,18 +144,12 @@ pub async fn create_charge(
                     tracing::error!("error deserializing alipay_wap config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            alipay::AlipayWap::create_credential(
-                &charge_id,
-                config,
-                &order,
-                &charge_req_payload,
-                &notify_url,
-            )
-            .await
-            .map_err(|e| {
-                tracing::error!("error creating alipay_wap credential: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            alipay::AlipayWap::create_credential(&charge_id, config, &order, &charge_req_payload)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error creating alipay_wap credential: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?
         }
         PaymentChannel::WxPub => {
             let channel_params =
@@ -171,18 +160,12 @@ pub async fn create_charge(
                     tracing::error!("error deserializing wx_pub config: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            weixin::WxPub::create_credential(
-                &charge_id,
-                config,
-                &order,
-                &charge_req_payload,
-                &notify_url,
-            )
-            .await
-            .map_err(|e| {
-                tracing::error!("error creating wx_pub credential: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            weixin::WxPub::create_credential(&charge_id, config, &order, &charge_req_payload)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error creating wx_pub credential: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?
         }
     };
 

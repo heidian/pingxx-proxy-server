@@ -81,7 +81,6 @@ impl OpenApiRequestPayload {
         alipay_app_id: &str,     // 开放平台 ID, 引用 ID
         alipay_pid: &str,        // 合作者身份 ID, 商家唯一 ID
         return_url: &str,        // 支付成功跳转
-        notify_url: &str,        // 异步通知
         merchant_order_no: &str, // 商户订单号
         charge_amount: i32,      // 支付金额, 精确到分
         time_expire: i32,        // 过期时间 timestamp 精确到秒
@@ -120,7 +119,7 @@ impl OpenApiRequestPayload {
             version: String::from("1.0"),
             biz_content: biz_content.to_string(),
             return_url: return_url.to_string(),
-            notify_url: notify_url.to_string(),
+            notify_url: crate::utils::notify_url(charge_id),
             sign: String::from(""),
             channel_url: String::from("https://openapi.alipay.com/gateway.do"),
         };
