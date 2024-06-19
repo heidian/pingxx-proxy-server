@@ -120,7 +120,7 @@ impl AlipayPcDirect {
                     return Err(());
                 }
                 // TODO! 需要验证 MapiNotifyPayload 上的 out_trade_no 和 total_fee
-                Ok(notify_payload.trade_status)
+                Ok(notify_payload.status)
             }
             AlipayApiType::OPENAPI => {
                 let notify_payload = OpenApiNotifyPayload::new(payload).map_err(|_| {
@@ -136,7 +136,7 @@ impl AlipayPcDirect {
                     return Err(());
                 }
                 // TODO! 需要验证 OpenApiNotifyPayload 上的 out_trade_no 和 total_amount
-                Ok(notify_payload.trade_status)
+                Ok(notify_payload.status)
             }
         }
     }

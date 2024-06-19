@@ -1,15 +1,62 @@
-use openssl::{
-    hash::MessageDigest,
-    pkey::PKey,
-    rsa::Rsa,
-    sign::{Signer, Verifier},
-};
+use super::config::AlipayError;
+use super::config::AlipayTradeStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::charges::alipay::AlipayTradeStatus;
+mod openapi_rsa2 {
+    use crate::charges::alipay::config::AlipayError;
+    use openssl::{
+        hash::MessageDigest,
+        pkey::PKey,
+        rsa::Rsa,
+        sign::{Signer, Verifier},
+    };
+    use std::collections::HashMap;
+
+    pub fn sign(m: &HashMap<String, String>, private_key: &str) -> Result<String, AlipayError> {
+        let mut query_list = Vec::<String>::new();
+        m.iter().for_each(|(k, v)| {
+            if !v.is_empty() {
+                let query = format!("{}={}", k, v.trim());
+                query_list.push(query);
+            }
+        });
+        query_list.sort();
+        let sign_sorted_source = query_list.join("&");
+        let keypair = Rsa::private_key_from_pem(private_key.as_bytes())?;
+        let keypair = PKey::from_rsa(keypair)?;
+        let mut signer = Signer::new(MessageDigest::sha256(), &keypair)?;
+        signer.update(sign_sorted_source.as_bytes())?;
+        let signature_bytes = signer.sign_to_vec()?;
+        let signature = data_encoding::BASE64.encode(&signature_bytes);
+        Ok(signature)
+    }
+
+    pub fn verify(
+        m: &HashMap<String, String>,
+        signature: &str,
+        public_key: &str,
+    ) -> Result<bool, AlipayError> {
+        let mut query_list = Vec::<String>::new();
+        m.iter().for_each(|(k, v)| {
+            if !v.is_empty() {
+                let query = format!("{}={}", k, v);
+                query_list.push(query);
+            }
+        });
+        query_list.sort();
+        let sorted_payload = query_list.join("&");
+        let keypair = Rsa::public_key_from_pem(public_key.as_bytes())?;
+        let keypair = PKey::from_rsa(keypair)?;
+        let mut verifier = Verifier::new(MessageDigest::sha256(), &keypair)?;
+        verifier.update(sorted_payload.as_bytes())?;
+        let signature_bytes = data_encoding::BASE64.decode(signature.as_bytes())?;
+        let result = verifier.verify(&signature_bytes)?;
+        Ok(result)
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenApiRequestPayload {
@@ -40,7 +87,7 @@ impl OpenApiRequestPayload {
         time_expire: i32,        // 过期时间 timestamp 精确到秒
         subject: &str,           // 标题
         body: &str,              // 详情
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, AlipayError> {
         let total_amount = format!("{:.2}", charge_amount as f64 / 100.0);
         let timeout_express = {
             let now = chrono::Utc::now().timestamp() as i32;
@@ -48,8 +95,9 @@ impl OpenApiRequestPayload {
                 let seconds = time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
             } else {
-                tracing::error!("OpenApiRequestPayload: expire_in_seconds < now");
-                return Err(());
+                return Err(AlipayError::MalformedPayload(
+                    "expire_in_seconds < now".into(),
+                ));
             }
         };
         let biz_content = json!({
@@ -79,40 +127,22 @@ impl OpenApiRequestPayload {
         Ok(payload)
     }
 
-    fn get_sorted_sign_source(&self) -> String {
+    pub fn sign_rsa2(&mut self, private_key: &str) -> Result<String, AlipayError> {
         // 这里 deserialize 不会出问题
         let v = serde_json::to_value(&self).unwrap();
-        let m: HashMap<String, String> = serde_json::from_value(v).unwrap();
-        let mut query_list = Vec::<String>::new();
-        m.iter().for_each(|(k, v)| {
-            if !v.is_empty() && k != "sign" && k != "channel_url" {
-                let query = format!("{}={}", k, v.trim());
-                query_list.push(query);
-            }
-        });
-        query_list.sort();
-        query_list.join("&")
-    }
-
-    pub fn sign_rsa2(&mut self, private_key: &str) -> Result<String, openssl::error::ErrorStack> {
-        let sign_sorted_source = self.get_sorted_sign_source();
-        tracing::info!("sign_source: {}", sign_sorted_source);
-        let keypair = Rsa::private_key_from_pem(private_key.as_bytes())?;
-        let keypair = PKey::from_rsa(keypair)?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &keypair)?;
-        signer.update(sign_sorted_source.as_bytes())?;
-        let signature_bytes = signer.sign_to_vec()?;
-        let signature = data_encoding::BASE64.encode(&signature_bytes);
-        tracing::info!("signture: {}", &signature);
+        let mut m: HashMap<String, String> = serde_json::from_value(v).unwrap();
+        m.remove("sign");
+        m.remove("channel_url");
+        let signature = openapi_rsa2::sign(&m, private_key)?;
         self.sign = signature.clone();
         Ok(signature)
     }
 }
 
 pub struct OpenApiNotifyPayload {
-    pub trade_status: AlipayTradeStatus,
-    pub out_trade_no: String,
-    pub total_amount: String,
+    pub status: AlipayTradeStatus,
+    pub merchant_order_no: String, // 商户订单号
+    pub amount: i32,               // 精确到分
     signature: String,
     m: HashMap<String, String>,
 }
@@ -124,7 +154,7 @@ impl OpenApiNotifyPayload {
      * 主要是时间值比如 gmt_create=2024-06-09+18:07:41&xxx 要转换成 gmt_create=2024-06-09 18:07:41&xxx
      * 这个要放在 url decode 之前, 不然 decode 完了以后会出现新的 + 号 (比如 sign 里面, 那里的加号需要保留)
      */
-    pub fn new(payload: &str) -> Result<Self, ()> {
+    pub fn new(payload: &str) -> Result<Self, AlipayError> {
         let payload = payload.replace("+", " ");
         let mut m: HashMap<String, String> = HashMap::new();
         payload.split('&').for_each(|pair| {
@@ -140,8 +170,8 @@ impl OpenApiNotifyPayload {
         });
         // tracing::debug!("m: {:?}", m);
 
-        fn missing_params() {
-            tracing::error!("openapi notify request missing required params");
+        fn missing_params() -> AlipayError {
+            AlipayError::MalformedPayload("missing required params".into())
         }
 
         let sign_type = m.get("sign_type").ok_or_else(missing_params)?;
@@ -151,42 +181,32 @@ impl OpenApiNotifyPayload {
         let total_amount = m.get("total_amount").ok_or_else(missing_params)?;
 
         if sign_type != "RSA2" {
-            tracing::error!("sign_type not RSA2");
-            return Err(());
+            return Err(AlipayError::MalformedPayload("sign_type not RSA2".into()));
         }
 
-        let trade_status = AlipayTradeStatus::from_str(trade_status).map_err(|_| {})?;
+        let trade_status = AlipayTradeStatus::from_str(trade_status)
+            .map_err(|_| AlipayError::MalformedPayload("unknown trade_status".into()))?;
+
+        let amount = (total_amount
+            .parse::<f64>()
+            .map_err(|_| AlipayError::MalformedPayload("invalid total_amount".into()))?
+            * 100.0) as i32;
 
         Ok(OpenApiNotifyPayload {
-            trade_status: trade_status,
-            out_trade_no: out_trade_no.to_owned(),
-            total_amount: total_amount.to_owned(),
+            status: trade_status,
+            merchant_order_no: out_trade_no.to_owned(),
+            amount,
             signature: signature.to_owned(),
             m,
         })
     }
 
-    pub fn verify_rsa2_sign(&self, public_key: &str) -> Result<bool, openssl::error::ErrorStack> {
-        let mut query_list = Vec::<String>::new();
-        self.m.iter().for_each(|(k, v)| {
-            if !v.is_empty() && k != "sign" && k != "sign_type" {
-                let query = format!("{}={}", k, v);
-                query_list.push(query);
-            }
-        });
-        query_list.sort();
-        let sorted_payload = query_list.join("&");
-
-        let keypair = Rsa::public_key_from_pem(public_key.as_bytes())?;
-        let keypair = PKey::from_rsa(keypair)?;
-        let mut verifier = Verifier::new(MessageDigest::sha256(), &keypair)?;
-        verifier.update(sorted_payload.as_bytes())?;
-        let signature_bytes = data_encoding::BASE64
-            .decode(self.signature.as_bytes())
-            .unwrap_or_default();
-        let result = verifier.verify(&signature_bytes)?;
-        // tracing::debug!("verify result: {}", result);
-
-        Ok(result)
+    pub fn verify_rsa2_sign(&self, public_key: &str) -> Result<bool, AlipayError> {
+        let mut m = self.m.clone();
+        // k != "sign" && k != "sign_type";
+        m.remove("sign_type");
+        m.remove("sign");
+        let verified = openapi_rsa2::verify(&m, &self.signature, public_key)?;
+        Ok(verified)
     }
 }
