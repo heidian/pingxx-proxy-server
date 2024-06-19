@@ -1,91 +1,57 @@
 use super::super::charge::CreateChargeRequestPayload;
-use super::config::{AlipayApiType, AlipayTradeStatus, AlipayWapConfig};
+use super::config::{AlipayApiType, AlipayError, AlipayTradeStatus, AlipayWapConfig};
 use super::mapi::{MapiNotifyPayload, MapiRequestPayload};
 use super::openapi::{OpenApiNotifyPayload, OpenApiRequestPayload};
-use serde_json::json;
 
 pub struct AlipayWap {}
 
 impl AlipayWap {
-    fn create_mapi_credential(
-        charge_id: &str,
-        config: AlipayWapConfig,
-        order: &crate::prisma::order::Data,
-        charge_req_payload: &CreateChargeRequestPayload,
-    ) -> Result<serde_json::Value, ()> {
-        let return_url = match charge_req_payload.extra.success_url.as_ref() {
-            Some(url) => url.to_string(),
-            None => "".to_string(),
-        };
-        let mut mapi_request_payload = MapiRequestPayload::new(
-            charge_id,
-            "alipay.wap.create.direct.pay.by.user",
-            &config.alipay_pid,
-            &return_url,
-            &order.merchant_order_no,
-            charge_req_payload.charge_amount,
-            order.time_expire,
-            &order.subject,
-            &order.body,
-        )
-        .map_err(|_| {
-            tracing::error!("invalid mapi request payload");
-        })?;
-        mapi_request_payload
-            .sign_rsa(&config.alipay_mer_wap_private_key)
-            .map_err(|e| {
-                tracing::error!("sign_rsa failed: {}", e);
-            })?;
-        Ok(json!(mapi_request_payload))
-    }
-
-    fn create_openapi_credential(
-        charge_id: &str,
-        config: AlipayWapConfig,
-        order: &crate::prisma::order::Data,
-        charge_req_payload: &CreateChargeRequestPayload,
-    ) -> Result<serde_json::Value, ()> {
-        let return_url = match charge_req_payload.extra.success_url.as_ref() {
-            Some(url) => url.to_string(),
-            None => "".to_string(),
-        };
-        let mut openapi_request_payload = OpenApiRequestPayload::new(
-            charge_id,
-            "alipay.trade.wap.pay",
-            &config.alipay_app_id,
-            &config.alipay_pid,
-            &return_url,
-            &order.merchant_order_no,
-            charge_req_payload.charge_amount,
-            order.time_expire,
-            &order.subject,
-            &order.body,
-        )
-        .map_err(|_| {
-            tracing::error!("invalid openapi request payload");
-        })?;
-        openapi_request_payload
-            .sign_rsa2(&config.alipay_mer_wap_private_key_rsa2)
-            .map_err(|e| {
-                tracing::error!("sign_rsa2 failed: {}", e);
-            })?;
-        Ok(json!(openapi_request_payload))
-    }
-
     pub async fn create_credential(
         charge_id: &str,
         config: AlipayWapConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-    ) -> Result<serde_json::Value, ()> {
+    ) -> Result<serde_json::Value, AlipayError> {
+        let return_url = match charge_req_payload.extra.success_url.as_ref() {
+            Some(url) => url.to_string(),
+            None => "".to_string(),
+        };
         match config.alipay_version {
             AlipayApiType::MAPI => {
-                Self::create_mapi_credential(charge_id, config, order, charge_req_payload)
+                let mut mapi_request_payload = MapiRequestPayload::new(
+                    charge_id,
+                    "alipay.wap.create.direct.pay.by.user",
+                    &config.alipay_pid,
+                    &return_url,
+                    &order.merchant_order_no,
+                    charge_req_payload.charge_amount,
+                    order.time_expire,
+                    &order.subject,
+                    &order.body,
+                )?;
+                mapi_request_payload.sign_rsa(&config.alipay_mer_wap_private_key)?;
+                serde_json::to_value(mapi_request_payload)
             }
             AlipayApiType::OPENAPI => {
-                Self::create_openapi_credential(charge_id, config, order, charge_req_payload)
+                let mut openapi_request_payload = OpenApiRequestPayload::new(
+                    charge_id,
+                    "alipay.trade.wap.pay",
+                    &config.alipay_app_id,
+                    &config.alipay_pid,
+                    &return_url,
+                    &order.merchant_order_no,
+                    charge_req_payload.charge_amount,
+                    order.time_expire,
+                    &order.subject,
+                    &order.body,
+                )?;
+                openapi_request_payload.sign_rsa2(&config.alipay_mer_wap_private_key_rsa2)?;
+                serde_json::to_value(openapi_request_payload)
             }
         }
+        .map_err(|e| {
+            AlipayError::MalformedPayload(format!("error serializing MapiRequestPayload: {:?}", e))
+        })
     }
 
     pub fn process_notify(config: AlipayWapConfig, payload: &str) -> Result<AlipayTradeStatus, ()> {

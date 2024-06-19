@@ -3,13 +3,13 @@ use axum::{
     http::HeaderMap,
     http::StatusCode,
 };
-use std::str::FromStr;
 use serde_json::json;
+use std::str::FromStr;
 
 use super::alipay::{self, AlipayPcDirectConfig, AlipayTradeStatus, AlipayWapConfig};
-use super::weixin::{self, WxPubConfig, WeixinTradeStatus};
-use super::charge::{load_channel_params_from_db, PaymentChannel, ChargeResponsePayload};
+use super::charge::{load_channel_params_from_db, ChargeResponsePayload, PaymentChannel};
 use super::order::OrderResponsePayload;
+use super::weixin::{self, WeixinTradeStatus, WxPubConfig};
 
 async fn send_webhook(
     app: &crate::prisma::app::Data,
@@ -70,8 +70,8 @@ async fn process_notify(
         .find_unique(crate::prisma::charge::id::equals(charge_id.into()))
         .with(
             crate::prisma::charge::order::fetch()
-            .with(crate::prisma::order::sub_app::fetch())
-            .with(crate::prisma::order::app::fetch())
+                .with(crate::prisma::order::sub_app::fetch())
+                .with(crate::prisma::order::app::fetch()),
         )
         .exec()
         .await
@@ -100,48 +100,40 @@ async fn process_notify(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let channel_params = load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
     let payment_success = match channel {
         PaymentChannel::AlipayPcDirect => {
-            let config = serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params)
-                .map_err(|e| {
-                    tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
+            let config: AlipayPcDirectConfig =
+                load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
+            let trade_status =
+                alipay::AlipayPcDirect::process_notify(config, payload).map_err(|e| {
+                    tracing::error!("error processing alipay notify: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            let trade_status = alipay::AlipayPcDirect::process_notify(config, payload).map_err(|e| {
-                tracing::error!("error processing alipay notify: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished
+            trade_status == AlipayTradeStatus::TradeSuccess
+                || trade_status == AlipayTradeStatus::TradeFinished
         }
         PaymentChannel::AlipayWap => {
-            let config = serde_json::from_value::<AlipayWapConfig>(channel_params.params)
-                .map_err(|e| {
-                    tracing::error!("error deserializing alipay_wap config: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            let config: AlipayWapConfig =
+                load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
             let trade_status = alipay::AlipayWap::process_notify(config, payload).map_err(|e| {
                 tracing::error!("error processing alipay notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
-            trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished
+            trade_status == AlipayTradeStatus::TradeSuccess
+                || trade_status == AlipayTradeStatus::TradeFinished
         }
         PaymentChannel::WxPub => {
-            let config = serde_json::from_value::<WxPubConfig>(channel_params.params)
-                .map_err(|e| {
-                    tracing::error!("error deserializing wx_pub config: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            let config: WxPubConfig =
+                load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
             let trade_status = weixin::WxPub::process_notify(config, payload).map_err(|e| {
                 tracing::error!("error processing weixin notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
             trade_status == WeixinTradeStatus::Success
-        }
-        // _ => {
-        //     tracing::error!("unsupported channel: {:?}", channel);
-        //     return Err(StatusCode::BAD_REQUEST);
-        // }
+        } // _ => {
+          //     tracing::error!("unsupported channel: {:?}", channel);
+          //     return Err(StatusCode::BAD_REQUEST);
+          // }
     };
 
     if payment_success {
@@ -214,9 +206,7 @@ pub async fn create_charge_notify(
     Ok(return_body)
 }
 
-pub async fn retry_charge_notify(
-    Path(id): Path<i32>,
-) -> Result<String, StatusCode> {
+pub async fn retry_charge_notify(Path(id): Path<i32>) -> Result<String, StatusCode> {
     let prisma_client = crate::prisma::new_client().await.map_err(|e| {
         tracing::error!("error getting prisma client: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -246,12 +236,7 @@ pub async fn retry_charge_notify(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openssl::{
-        hash::MessageDigest,
-        pkey::PKey,
-        rsa::Rsa,
-        sign::Verifier,
-    };
+    use openssl::{hash::MessageDigest, pkey::PKey, rsa::Rsa, sign::Verifier};
 
     #[tokio::test]
     async fn test_charge_notify_verify_rsa2() {
@@ -271,23 +256,23 @@ mod tests {
             .unwrap();
 
         let payload = history.data.clone();
-        process_notify(&prisma_client, charge_id, &payload).await.unwrap();
+        process_notify(&prisma_client, charge_id, &payload)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     async fn test_pingxx_signature() {
         return; // skip test
         tracing_subscriber::fmt::init();
-        let payload="";
+        let payload = "";
         let signature = "";
         let api_public_key = "";
         let keypair = Rsa::public_key_from_pem(api_public_key.as_bytes()).unwrap();
         let keypair = PKey::from_rsa(keypair).unwrap();
         let mut verifier = Verifier::new(MessageDigest::sha256(), &keypair).unwrap();
         verifier.update(payload.as_bytes()).unwrap();
-        let signature_bytes = data_encoding::BASE64
-            .decode(signature.as_bytes())
-            .unwrap();
+        let signature_bytes = data_encoding::BASE64.decode(signature.as_bytes()).unwrap();
         let result = verifier.verify(&signature_bytes).unwrap();
         assert!(result);
         // tracing::info!("verify result: {}", result);

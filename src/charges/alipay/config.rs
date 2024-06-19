@@ -38,7 +38,6 @@ enum AlipaySignType {
     RSA2,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AlipayPcDirectConfig {
     pub alipay_pid: String,
@@ -48,14 +47,13 @@ pub struct AlipayPcDirectConfig {
     pub alipay_version: AlipayApiType,
     pub alipay_app_id: String,
 
-    alipay_sign_type: AlipaySignType,
+    // alipay_sign_type: AlipaySignType,
     pub alipay_private_key: String,
     pub alipay_public_key: String,
     pub alipay_private_key_rsa2: String,
     pub alipay_public_key_rsa2: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AlipayWapConfig {
     pub alipay_pid: String,
@@ -65,14 +63,13 @@ pub struct AlipayWapConfig {
     pub alipay_version: AlipayApiType,
     pub alipay_app_id: String,
 
-    alipay_sign_type: AlipaySignType,
+    // alipay_sign_type: AlipaySignType,
     pub alipay_mer_wap_private_key: String,
     pub alipay_wap_public_key: String,
     pub alipay_mer_wap_private_key_rsa2: String,
     pub alipay_wap_public_key_rsa2: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum AlipayTradeStatus {
     TradeSuccess,

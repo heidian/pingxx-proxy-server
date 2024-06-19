@@ -63,12 +63,15 @@ pub struct ChargeResponsePayload {
     pub credential: serde_json::Value,
 }
 
-pub async fn load_channel_params_from_db(
+pub async fn load_channel_params_from_db<T>(
     prisma_client: &crate::prisma::PrismaClient,
     sub_app_id: &str,
     channel: &PaymentChannel,
-) -> Result<crate::prisma::channel_params::Data, StatusCode> {
-    let config = prisma_client
+) -> Result<T, StatusCode>
+where
+    T: for<'a> Deserialize<'a>,
+{
+    let channel_params = prisma_client
         .channel_params()
         .find_unique(crate::prisma::channel_params::sub_app_id_channel(
             sub_app_id.to_string(),
@@ -84,6 +87,10 @@ pub async fn load_channel_params_from_db(
             tracing::error!("order not found");
             StatusCode::NOT_FOUND
         })?;
+    let config: T = serde_json::from_value(channel_params.params).map_err(|e| {
+        tracing::error!("error deserializing alipay_wap config: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     Ok(config)
 }
 
@@ -109,17 +116,12 @@ pub async fn create_charge(
 
     let credential_object = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            let channel_params = load_channel_params_from_db(
+            let config: AlipayPcDirectConfig = load_channel_params_from_db(
                 &prisma_client,
                 &sub_app.id,
                 &PaymentChannel::AlipayPcDirect,
             )
             .await?;
-            let config = serde_json::from_value::<AlipayPcDirectConfig>(channel_params.params)
-                .map_err(|e| {
-                    tracing::error!("error deserializing alipay_pc_direct config: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
             alipay::AlipayPcDirect::create_credential(
                 &charge_id,
                 config,
@@ -133,17 +135,12 @@ pub async fn create_charge(
             })?
         }
         PaymentChannel::AlipayWap => {
-            let channel_params = load_channel_params_from_db(
+            let config: AlipayWapConfig = load_channel_params_from_db(
                 &prisma_client,
                 &sub_app.id,
                 &PaymentChannel::AlipayWap,
             )
             .await?;
-            let config =
-                serde_json::from_value::<AlipayWapConfig>(channel_params.params).map_err(|e| {
-                    tracing::error!("error deserializing alipay_wap config: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
             alipay::AlipayWap::create_credential(&charge_id, config, &order, &charge_req_payload)
                 .await
                 .map_err(|e| {
@@ -152,14 +149,9 @@ pub async fn create_charge(
                 })?
         }
         PaymentChannel::WxPub => {
-            let channel_params =
+            let config: WxPubConfig =
                 load_channel_params_from_db(&prisma_client, &sub_app.id, &PaymentChannel::WxPub)
                     .await?;
-            let config =
-                serde_json::from_value::<WxPubConfig>(channel_params.params).map_err(|e| {
-                    tracing::error!("error deserializing wx_pub config: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
             weixin::WxPub::create_credential(&charge_id, config, &order, &charge_req_payload)
                 .await
                 .map_err(|e| {
