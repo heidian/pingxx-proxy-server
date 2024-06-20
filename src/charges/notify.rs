@@ -87,20 +87,17 @@ async fn process_notify(
         ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))
     })?;
 
-    let charge_status = match channel {
+    let handler: Box<dyn ChannelHandler + Send> = match channel {
         PaymentChannel::AlipayPcDirect => {
-            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?;
-            handler.process_notify(payload)?
+            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
         }
         PaymentChannel::AlipayWap => {
-            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?;
-            handler.process_notify(payload)?
+            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
         }
-        PaymentChannel::WxPub => {
-            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id).await?;
-            handler.process_notify(payload)?
-        }
+        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
     };
+
+    let charge_status = handler.process_notify(payload)?;
 
     if charge_status == ChargeStatus::Success {
         // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据

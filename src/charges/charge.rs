@@ -80,26 +80,19 @@ pub async fn create_charge(
             OrderError::Unexpected(s) => ChargeError::InternalError(s),
         })?;
 
-    let credential_object = match charge_req_payload.channel {
+    let handler: Box<dyn ChannelHandler + Send> = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?;
-            handler
-                .create_credential(&charge_id, &order, &charge_req_payload)
-                .await?
+            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
         }
         PaymentChannel::AlipayWap => {
-            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?;
-            handler
-                .create_credential(&charge_id, &order, &charge_req_payload)
-                .await?
+            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
         }
-        PaymentChannel::WxPub => {
-            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id).await?;
-            handler
-                .create_credential(&charge_id, &order, &charge_req_payload)
-                .await?
-        }
+        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
     };
+
+    let credential_object = handler
+        .create_credential(&charge_id, &order, &charge_req_payload)
+        .await?;
 
     let credential = {
         let mut credential = json!({
