@@ -7,6 +7,8 @@ use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use dotenvy::dotenv;
 
+mod alipay;
+mod weixin;
 mod utils;
 mod charges;
 #[allow(dead_code, unused_imports)]

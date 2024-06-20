@@ -1,11 +1,8 @@
 use super::{
-    alipay::{self},
-    charge::ChargeResponsePayload,
-    order::OrderResponsePayload,
-    utils::load_charge_from_db,
-    weixin::{self},
+    charge::ChargeResponsePayload, order::OrderResponsePayload, utils::load_charge_from_db,
     ChannelHandler, ChargeError, ChargeStatus, PaymentChannel,
 };
+use crate::{alipay, weixin};
 use serde_json::json;
 use std::str::FromStr;
 

@@ -1,9 +1,7 @@
-mod alipay;
 mod charge;
 mod notify;
 mod order;
 mod routes;
-mod weixin;
 
 mod error {
     use axum::{
@@ -115,7 +113,7 @@ mod channel {
     }
 }
 
-mod utils {
+pub mod utils {
     use super::{channel::PaymentChannel, error::DBError};
 
     pub async fn load_order_from_db(
@@ -253,7 +251,7 @@ mod request {
     }
 }
 
-use channel::*;
-use error::*;
-use request::*;
+pub use channel::*;
+pub use error::*;
+pub use request::*;
 pub use routes::get_routes;

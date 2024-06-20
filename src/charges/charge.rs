@@ -1,10 +1,8 @@
 use super::{
-    alipay::{self},
-    order::OrderResponsePayload,
-    utils::load_order_from_db,
-    weixin::{self},
-    ChannelHandler, ChargeError, ChargeExtra, PaymentChannel,
+    order::OrderResponsePayload, utils::load_order_from_db, ChannelHandler, ChargeError,
+    ChargeExtra, PaymentChannel,
 };
+use crate::{alipay, weixin};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
@@ -46,7 +44,12 @@ pub async fn create_charge(
     };
 
     let credential_object = handler
-        .create_credential(&order, &charge_id, charge_req_payload.charge_amount, &charge_req_payload.extra)
+        .create_credential(
+            &order,
+            &charge_id,
+            charge_req_payload.charge_amount,
+            &charge_req_payload.extra,
+        )
         .await?;
 
     let credential = {

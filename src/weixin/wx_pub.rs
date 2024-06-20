@@ -1,4 +1,4 @@
-use super::super::{
+use crate::charges::{
     utils::load_channel_params_from_db, ChannelHandler, ChargeError, ChargeExtra, ChargeStatus,
     PaymentChannel,
 };
