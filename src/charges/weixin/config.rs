@@ -35,3 +35,18 @@ pub enum WeixinError {
     #[error("internal error: {0}")]
     InternalError(String),
 }
+
+impl From<String> for WeixinError {
+    fn from(e: String) -> Self {
+        WeixinError::InternalError(e)
+    }
+}
+
+impl From<WeixinError> for crate::charges::ChargeError {
+    fn from(e: WeixinError) -> crate::charges::ChargeError {
+        match e {
+            WeixinError::MalformedPayload(e) => crate::charges::ChargeError::MalformedPayload(e),
+            WeixinError::InternalError(e) => crate::charges::ChargeError::InternalError(e),
+        }
+    }
+}

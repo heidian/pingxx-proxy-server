@@ -106,3 +106,18 @@ impl From<data_encoding::DecodeError> for AlipayError {
         AlipayError::InternalError(format!("[base64] {:?}", e))
     }
 }
+
+impl From<String> for AlipayError {
+    fn from(e: String) -> Self {
+        AlipayError::InternalError(e)
+    }
+}
+
+impl From<AlipayError> for crate::charges::ChargeError {
+    fn from(e: AlipayError) -> crate::charges::ChargeError {
+        match e {
+            AlipayError::MalformedPayload(e) => crate::charges::ChargeError::MalformedPayload(e),
+            AlipayError::InternalError(e) => crate::charges::ChargeError::InternalError(e),
+        }
+    }
+}

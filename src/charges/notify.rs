@@ -1,3 +1,11 @@
+use super::{
+    ChargeError,
+    ChargeStatus,
+    alipay::{self},
+    charge::{ChannelHandler, ChargeResponsePayload, PaymentChannel},
+    order::OrderResponsePayload,
+    weixin::{self},
+};
 use axum::{
     extract::{Path, Query},
     http::HeaderMap,
@@ -5,11 +13,6 @@ use axum::{
 };
 use serde_json::json;
 use std::str::FromStr;
-
-use super::alipay::{self, AlipayPcDirectConfig, AlipayTradeStatus, AlipayWapConfig};
-use super::charge::{load_channel_params_from_db, ChargeResponsePayload, PaymentChannel};
-use super::order::OrderResponsePayload;
-use super::weixin::{self, WeixinTradeStatus, WxPubConfig};
 
 async fn send_webhook(
     app: &crate::prisma::app::Data,
@@ -100,43 +103,46 @@ async fn process_notify(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let payment_success = match channel {
+    let charge_status = match channel {
         PaymentChannel::AlipayPcDirect => {
-            let config: AlipayPcDirectConfig =
-                load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
-            let trade_status =
-                alipay::AlipayPcDirect::process_notify(config, payload).map_err(|e| {
-                    tracing::error!("error processing alipay notify: {:?}", e);
+            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error initializing alipay_pc_direct handler: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            trade_status == AlipayTradeStatus::TradeSuccess
-                || trade_status == AlipayTradeStatus::TradeFinished
-        }
-        PaymentChannel::AlipayWap => {
-            let config: AlipayWapConfig =
-                load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
-            let trade_status = alipay::AlipayWap::process_notify(config, payload).map_err(|e| {
+            handler.process_notify(payload).map_err(|e| {
                 tracing::error!("error processing alipay notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            trade_status == AlipayTradeStatus::TradeSuccess
-                || trade_status == AlipayTradeStatus::TradeFinished
+            })?
+        }
+        PaymentChannel::AlipayWap => {
+            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error initializing alipay_wap handler: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            handler.process_notify(payload).map_err(|e| {
+                tracing::error!("error processing alipay notify: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
         }
         PaymentChannel::WxPub => {
-            let config: WxPubConfig =
-                load_channel_params_from_db(prisma_client, &sub_app.id, &channel).await?;
-            let trade_status = weixin::WxPub::process_notify(config, payload).map_err(|e| {
+            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error initializing wx_pub handler: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            handler.process_notify(payload).map_err(|e| {
                 tracing::error!("error processing weixin notify: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            trade_status == WeixinTradeStatus::Success
-        } // _ => {
-          //     tracing::error!("unsupported channel: {:?}", channel);
-          //     return Err(StatusCode::BAD_REQUEST);
-          // }
+            })?
+        }
     };
 
-    if payment_success {
+    if charge_status == ChargeStatus::Success {
         // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
         order = prisma_client
             .order()

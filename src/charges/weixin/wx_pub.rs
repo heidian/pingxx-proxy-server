@@ -1,6 +1,12 @@
-use super::super::charge::CreateChargeRequestPayload;
+use super::super::{
+    charge::{
+        load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload, PaymentChannel,
+    },
+    ChargeError, ChargeStatus,
+};
 use super::config::{WeixinError, WeixinTradeStatus, WxPubConfig};
 use super::v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -22,19 +28,38 @@ struct WxJSAPIResponse {
     prepay_id: Option<String>,
 }
 
-pub struct WxPub {}
+pub struct WxPub {
+    config: WxPubConfig,
+}
 
 impl WxPub {
+    pub async fn new(
+        prisma_client: &crate::prisma::PrismaClient,
+        sub_app_id: &str,
+    ) -> Result<Self, WeixinError> {
+        let config = load_channel_params_from_db::<WxPubConfig, WeixinError>(
+            &prisma_client,
+            &sub_app_id,
+            &PaymentChannel::WxPub,
+        )
+        .await?;
+        Ok(Self { config })
+    }
+}
+
+#[async_trait]
+impl ChannelHandler for WxPub {
     /**
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=7_7&index=6
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=9_1
      */
-    pub async fn create_credential(
+    async fn create_credential(
+        &self,
         _charge_id: &str,
-        config: WxPubConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-    ) -> Result<serde_json::Value, WeixinError> {
+    ) -> Result<serde_json::Value, ChargeError> {
+        let config = &self.config;
         let open_id = match charge_req_payload.extra.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
             None => "".to_string(),
@@ -74,13 +99,13 @@ impl WxPub {
             WeixinError::MalformedPayload(format!("error deserialize WxJSAPIResponse: {}", e))
         })?;
         if res_obj.return_code != "SUCCESS" {
-            return Err(WeixinError::InternalError(format!(
+            return Err(ChargeError::InternalError(format!(
                 "unifiedorder return_code != SUCCESS: {}",
                 &res_obj.return_msg
             )));
         }
         if res_obj.result_code != Some("SUCCESS".to_string()) {
-            return Err(WeixinError::InternalError(format!(
+            return Err(ChargeError::InternalError(format!(
                 "unifiedorder result_code != SUCCESS: {:?}",
                 res_obj.err_code_des.as_ref()
             )));
@@ -102,16 +127,19 @@ impl WxPub {
         Ok(res_json)
     }
 
-    pub fn process_notify(
-        config: WxPubConfig,
-        payload: &str,
-    ) -> Result<WeixinTradeStatus, WeixinError> {
+    fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
+        let config = &self.config;
         let notify_payload = V2ApiNotifyPayload::new(payload)?;
         let verified = notify_payload.verify_md5_sign(&config.wx_pub_key)?;
         if !verified {
-            return Err(WeixinError::MalformedPayload("wrong md5 sign".into()));
+            return Err(ChargeError::MalformedPayload("wrong md5 sign".into()));
         }
-        Ok(notify_payload.status)
+        let trade_status = notify_payload.status;
+        if trade_status == WeixinTradeStatus::Success {
+            Ok(ChargeStatus::Success)
+        } else {
+            Ok(ChargeStatus::Fail)
+        }
     }
 }
 

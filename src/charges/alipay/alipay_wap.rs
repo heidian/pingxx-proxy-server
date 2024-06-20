@@ -1,17 +1,42 @@
-use super::super::charge::CreateChargeRequestPayload;
+use super::super::{
+    charge::{
+        load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload, PaymentChannel,
+    },
+    ChargeError, ChargeStatus,
+};
 use super::config::{AlipayApiType, AlipayError, AlipayTradeStatus, AlipayWapConfig};
 use super::mapi::{MapiNotifyPayload, MapiRequestPayload};
 use super::openapi::{OpenApiNotifyPayload, OpenApiRequestPayload};
+use async_trait::async_trait;
 
-pub struct AlipayWap {}
+pub struct AlipayWap {
+    config: AlipayWapConfig,
+}
 
 impl AlipayWap {
-    pub async fn create_credential(
+    pub async fn new(
+        prisma_client: &crate::prisma::PrismaClient,
+        sub_app_id: &str,
+    ) -> Result<Self, AlipayError> {
+        let config = load_channel_params_from_db::<AlipayWapConfig, AlipayError>(
+            &prisma_client,
+            &sub_app_id,
+            &PaymentChannel::AlipayWap,
+        )
+        .await?;
+        Ok(Self { config })
+    }
+}
+
+#[async_trait]
+impl ChannelHandler for AlipayWap {
+    async fn create_credential(
+        &self,
         charge_id: &str,
-        config: AlipayWapConfig,
         order: &crate::prisma::order::Data,
         charge_req_payload: &CreateChargeRequestPayload,
-    ) -> Result<serde_json::Value, AlipayError> {
+    ) -> Result<serde_json::Value, ChargeError> {
+        let config = &self.config;
         let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
             None => "".to_string(),
@@ -50,44 +75,36 @@ impl AlipayWap {
             }
         }
         .map_err(|e| {
-            AlipayError::MalformedPayload(format!("error serializing MapiRequestPayload: {:?}", e))
+            ChargeError::MalformedPayload(format!("error serializing MapiRequestPayload: {:?}", e))
         })
     }
 
-    pub fn process_notify(config: AlipayWapConfig, payload: &str) -> Result<AlipayTradeStatus, ()> {
-        match config.alipay_version {
+    fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
+        let config = &self.config;
+        let trade_status = match config.alipay_version {
             AlipayApiType::MAPI => {
-                let notify_payload = MapiNotifyPayload::new(payload).map_err(|_| {
-                    tracing::error!("invalid notify payload, {}", payload);
-                })?;
-                let verified = notify_payload
-                    .verify_rsa_sign(&config.alipay_wap_public_key)
-                    .map_err(|e| {
-                        tracing::error!("verify rsa sign: {}", e);
-                    })?;
+                let notify_payload = MapiNotifyPayload::new(payload)?;
+                let verified = notify_payload.verify_rsa_sign(&config.alipay_wap_public_key)?;
                 if !verified {
-                    tracing::error!("wrong rsa sign");
-                    return Err(());
+                    return Err(ChargeError::MalformedPayload("wrong rsa sign".into()));
                 }
-                // TODO! 需要验证 MapiNotifyPayload 上的 out_trade_no 和 total_fee
-                Ok(notify_payload.status)
+                notify_payload.status
             }
             AlipayApiType::OPENAPI => {
-                let notify_payload = OpenApiNotifyPayload::new(payload).map_err(|_| {
-                    tracing::error!("invalid notify payload, {}", payload);
-                })?;
-                let verified = notify_payload
-                    .verify_rsa2_sign(&config.alipay_wap_public_key_rsa2)
-                    .map_err(|e| {
-                        tracing::error!("verify rsa2 sign: {}", e);
-                    })?;
+                let notify_payload = OpenApiNotifyPayload::new(payload)?;
+                let verified =
+                    notify_payload.verify_rsa2_sign(&config.alipay_wap_public_key_rsa2)?;
                 if !verified {
-                    tracing::error!("wrong rsa2 sign");
-                    return Err(());
+                    return Err(ChargeError::MalformedPayload("wrong rsa2 sign".into()));
                 }
-                // TODO! 需要验证 OpenApiNotifyPayload 上的 out_trade_no 和 total_amount
-                Ok(notify_payload.status)
+                notify_payload.status
             }
+        };
+        // TODO! 需要验证 OpenApiNotifyPayload 上的 out_trade_no 和 total_amount
+        if trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished {
+            Ok(ChargeStatus::Success)
+        } else {
+            Ok(ChargeStatus::Fail)
         }
     }
 }
