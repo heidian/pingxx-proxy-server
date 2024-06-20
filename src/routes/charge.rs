@@ -1,7 +1,5 @@
 use super::order::OrderResponsePayload;
-use crate::core::{
-    utils::load_order_from_db, ChannelHandler, ChargeError, ChargeExtra, PaymentChannel,
-};
+use crate::core::{ChannelHandler, ChargeError, ChargeExtra, PaymentChannel};
 use crate::{alipay, weixin};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -31,7 +29,7 @@ pub async fn create_charge(
 ) -> Result<serde_json::Value, ChargeError> {
     let charge_id = crate::utils::generate_id("ch_");
 
-    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
+    let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
 
     let handler: Box<dyn ChannelHandler + Send> = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {

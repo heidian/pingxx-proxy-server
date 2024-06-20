@@ -1,5 +1,5 @@
 use super::charge::ChargeResponsePayload;
-use crate::core::{utils::load_order_from_db, OrderError, PaymentChannel};
+use crate::core::{OrderError, PaymentChannel};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
@@ -108,7 +108,7 @@ pub async fn create_order(
         .await
         .map_err(|e| OrderError::Unexpected(format!("sql error: {:?}", e)))?;
 
-    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
+    let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
     let result = OrderResponsePayload::new(&order, &app, &sub_app);
 
     Ok(result)
@@ -118,9 +118,7 @@ pub async fn retrieve_order(
     prisma_client: &crate::prisma::PrismaClient,
     order_id: String,
 ) -> Result<serde_json::Value, OrderError> {
-    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id)
-        .await
-        .map_err(|e| OrderError::Unexpected(format!("error loading order from db: {:?}", e)))?;
+    let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
     let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
     let mut result = serde_json::to_value(order_response).map_err(|e| {
         OrderError::Unexpected(format!("error serializing order response payload: {:?}", e))

@@ -1,7 +1,5 @@
 use super::{charge::ChargeResponsePayload, order::OrderResponsePayload};
-use crate::core::{
-    utils::load_charge_from_db, ChannelHandler, ChargeError, ChargeStatus, PaymentChannel,
-};
+use crate::core::{ChannelHandler, ChargeError, ChargeStatus, PaymentChannel};
 use crate::{alipay, weixin};
 use serde_json::json;
 use std::str::FromStr;
@@ -60,7 +58,8 @@ async fn process_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let (charge, mut order, app, sub_app) = load_charge_from_db(&prisma_client, charge_id).await?;
+    let (charge, mut order, app, sub_app) =
+        crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
         ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))

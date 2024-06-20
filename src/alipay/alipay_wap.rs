@@ -3,10 +3,7 @@ use super::{
     openapi::{OpenApiNotifyPayload, OpenApiRequestPayload},
     AlipayApiType, AlipayError, AlipayWapConfig,
 };
-use crate::core::{
-    utils::load_channel_params_from_db, ChannelHandler, ChargeError, ChargeExtra, ChargeStatus,
-    PaymentChannel,
-};
+use crate::core::{ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel};
 use async_trait::async_trait;
 
 pub struct AlipayWap {
@@ -18,10 +15,13 @@ impl AlipayWap {
         prisma_client: &crate::prisma::PrismaClient,
         sub_app_id: &str,
     ) -> Result<Self, AlipayError> {
-        let channel_params =
-            load_channel_params_from_db(&prisma_client, &sub_app_id, &PaymentChannel::AlipayWap)
-                .await
-                .map_err(|e| AlipayError::InvalidConfig(format!("{:?}", e)))?;
+        let channel_params = crate::utils::load_channel_params_from_db(
+            &prisma_client,
+            &sub_app_id,
+            &PaymentChannel::AlipayWap.to_string(),
+        )
+        .await
+        .map_err(|e| AlipayError::InvalidConfig(format!("{:?}", e)))?;
         let config: AlipayWapConfig =
             serde_json::from_value(channel_params.params).map_err(|e| {
                 AlipayError::InvalidConfig(

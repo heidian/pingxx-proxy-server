@@ -2,10 +2,7 @@ use super::{
     v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload},
     WeixinError, WxPubConfig,
 };
-use crate::core::{
-    utils::load_channel_params_from_db, ChannelHandler, ChargeError, ChargeExtra, ChargeStatus,
-    PaymentChannel,
-};
+use crate::core::{ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel};
 use async_trait::async_trait;
 use serde_json::json;
 use std::collections::HashMap;
@@ -19,10 +16,13 @@ impl WxPub {
         prisma_client: &crate::prisma::PrismaClient,
         sub_app_id: &str,
     ) -> Result<Self, WeixinError> {
-        let channel_params =
-            load_channel_params_from_db(&prisma_client, &sub_app_id, &PaymentChannel::WxPub)
-                .await
-                .map_err(|e| WeixinError::InvalidConfig(format!("{:?}", e)))?;
+        let channel_params = crate::utils::load_channel_params_from_db(
+            &prisma_client,
+            &sub_app_id,
+            &PaymentChannel::WxPub.to_string(),
+        )
+        .await
+        .map_err(|e| WeixinError::InvalidConfig(format!("{:?}", e)))?;
         let config: WxPubConfig = serde_json::from_value(channel_params.params).map_err(|e| {
             WeixinError::InvalidConfig(format!("error deserializing wx_pub config: {:?}", e).into())
         })?;
