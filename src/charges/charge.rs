@@ -3,21 +3,11 @@ use super::{
     order::OrderResponsePayload,
     utils::load_order_from_db,
     weixin::{self},
-    ChannelHandler, ChargeError, PaymentChannel,
+    ChannelHandler, ChargeError, ChargeExtra, PaymentChannel,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct ChargeExtra {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub success_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cancel_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub open_id: Option<String>,
-}
 
 #[derive(Deserialize, Debug)]
 pub struct CreateChargeRequestPayload {
@@ -56,7 +46,7 @@ pub async fn create_charge(
     };
 
     let credential_object = handler
-        .create_credential(&charge_id, &order, &charge_req_payload)
+        .create_credential(&order, &charge_id, charge_req_payload.charge_amount, &charge_req_payload.extra)
         .await?;
 
     let credential = {

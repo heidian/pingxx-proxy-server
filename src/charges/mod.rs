@@ -5,12 +5,6 @@ mod order;
 mod routes;
 mod weixin;
 
-#[derive(Debug, PartialEq)]
-pub enum ChargeStatus {
-    Success,
-    Fail,
-}
-
 mod error {
     use axum::{
         http::StatusCode,
@@ -90,22 +84,8 @@ mod error {
 }
 
 mod channel {
-    use super::{charge::CreateChargeRequestPayload, error::ChargeError, ChargeStatus};
-    use async_trait::async_trait;
     use serde::{Deserialize, Serialize};
     use std::{fmt::Debug, str::FromStr};
-
-    #[async_trait]
-    pub trait ChannelHandler {
-        async fn create_credential(
-            &self,
-            charge_id: &str,
-            order: &crate::prisma::order::Data,
-            charge_req_payload: &CreateChargeRequestPayload,
-        ) -> Result<serde_json::Value, ChargeError>;
-
-        fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
-    }
 
     #[derive(Deserialize, Serialize, Debug)]
     pub enum PaymentChannel {
@@ -238,6 +218,42 @@ mod utils {
     }
 }
 
+mod request {
+    use super::error::ChargeError;
+    use async_trait::async_trait;
+    use serde::{Deserialize, Serialize};
+
+    #[async_trait]
+    pub trait ChannelHandler {
+        async fn create_credential(
+            &self,
+            order: &crate::prisma::order::Data,
+            charge_id: &str,
+            charge_amount: i32,
+            payload: &ChargeExtra,
+        ) -> Result<serde_json::Value, ChargeError>;
+
+        fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub enum ChargeStatus {
+        Success,
+        Fail,
+    }
+
+    #[derive(Deserialize, Serialize, Debug)]
+    pub struct ChargeExtra {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub success_url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub cancel_url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub open_id: Option<String>,
+    }
+}
+
 use channel::*;
 use error::*;
+use request::*;
 pub use routes::get_routes;

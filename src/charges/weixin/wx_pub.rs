@@ -1,6 +1,6 @@
 use super::super::{
-    charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
-    ChargeError, ChargeStatus, PaymentChannel,
+    utils::load_channel_params_from_db, ChannelHandler, ChargeError, ChargeExtra, ChargeStatus,
+    PaymentChannel,
 };
 use super::{
     v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload},
@@ -34,27 +34,28 @@ impl WxPub {
 impl ChannelHandler for WxPub {
     async fn create_credential(
         &self,
-        _charge_id: &str,
         order: &crate::prisma::order::Data,
-        charge_req_payload: &CreateChargeRequestPayload,
+        charge_id: &str,
+        charge_amount: i32,
+        payload: &ChargeExtra,
     ) -> Result<serde_json::Value, ChargeError> {
         let config = &self.config;
-        let open_id = match charge_req_payload.extra.open_id.as_ref() {
+        let open_id = match payload.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
             None => {
                 return Err(ChargeError::MalformedRequest(
                     "missing open_id in charge extra".to_string(),
                 ))
-            },
+            }
         };
         let mut v2_api_payload = V2ApiRequestPayload::new(
-            _charge_id,
+            charge_id,
             &config.wx_pub_app_id,
             &config.wx_pub_mch_id,
             &open_id,
             &order.client_ip,
             &order.merchant_order_no,
-            charge_req_payload.charge_amount,
+            charge_amount,
             order.time_expire,
             &order.subject,
             &order.body,

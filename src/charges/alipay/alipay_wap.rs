@@ -1,6 +1,6 @@
 use super::super::{
-    charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
-    ChargeError, ChargeStatus, PaymentChannel,
+    utils::load_channel_params_from_db, ChannelHandler, ChargeError, ChargeExtra, ChargeStatus,
+    PaymentChannel,
 };
 use super::{
     mapi::{MapiNotifyPayload, MapiRequestPayload},
@@ -36,18 +36,19 @@ impl AlipayWap {
 impl ChannelHandler for AlipayWap {
     async fn create_credential(
         &self,
-        charge_id: &str,
         order: &crate::prisma::order::Data,
-        charge_req_payload: &CreateChargeRequestPayload,
+        charge_id: &str,
+        charge_amount: i32,
+        payload: &ChargeExtra,
     ) -> Result<serde_json::Value, ChargeError> {
         let config = &self.config;
-        let return_url = match charge_req_payload.extra.success_url.as_ref() {
+        let return_url = match payload.success_url.as_ref() {
             Some(url) => url.to_string(),
             None => {
                 return Err(ChargeError::MalformedRequest(
                     "missing success_url in charge extra".to_string(),
                 ))
-            },
+            }
         };
         let res_json = match config.alipay_version {
             AlipayApiType::MAPI => {
@@ -57,7 +58,7 @@ impl ChannelHandler for AlipayWap {
                     &config.alipay_pid,
                     &return_url,
                     &order.merchant_order_no,
-                    charge_req_payload.charge_amount,
+                    charge_amount,
                     order.time_expire,
                     &order.subject,
                     &order.body,
@@ -73,7 +74,7 @@ impl ChannelHandler for AlipayWap {
                     &config.alipay_pid,
                     &return_url,
                     &order.merchant_order_no,
-                    charge_req_payload.charge_amount,
+                    charge_amount,
                     order.time_expire,
                     &order.subject,
                     &order.body,
