@@ -1,8 +1,6 @@
 use super::super::{
-    charge::{
-        load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload, PaymentChannel,
-    },
-    ChargeError, ChargeStatus,
+    charge::{load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload},
+    ChargeError, ChargeStatus, PaymentChannel,
 };
 use super::config::{AlipayApiType, AlipayError, AlipayWapConfig};
 use super::mapi::{MapiNotifyPayload, MapiRequestPayload};

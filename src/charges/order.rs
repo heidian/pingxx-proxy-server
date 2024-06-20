@@ -1,9 +1,7 @@
-use axum::{extract::Path, http::StatusCode, response::Json};
+use super::{charge::ChargeResponsePayload, OrderError, PaymentChannel};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
-
-use super::charge::{ChargeResponsePayload, PaymentChannel};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CreateOrderRequestPayload {
@@ -86,7 +84,7 @@ pub async fn load_order_from_db(
         crate::prisma::app::Data,
         crate::prisma::sub_app::Data,
     ),
-    StatusCode,
+    OrderError,
 > {
     let order = prisma_client
         .order()
@@ -103,44 +101,28 @@ pub async fn load_order_from_db(
         )
         .exec()
         .await
-        .map_err(|e| {
-            tracing::error!("sql error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or_else(|| {
-            tracing::error!("order not found");
-            StatusCode::NOT_FOUND
-        })?;
+        .map_err(|e| OrderError::Unexpected(format!("sql error: {:?}", e)))?
+        .ok_or_else(|| OrderError::BadRequest(format!("order {} not found", order_id)))?;
 
     let (app, sub_app) = {
         let order = order.clone();
-        let app = order.app.ok_or_else(|| {
-            tracing::error!("order.app is None");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        let sub_app = order.sub_app.ok_or_else(|| {
-            tracing::error!("order.sub_app is None");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        let app = order
+            .app
+            .ok_or_else(|| OrderError::Unexpected("order.app is None".into()))?;
+        let sub_app = order
+            .sub_app
+            .ok_or_else(|| OrderError::Unexpected("order.sub_app is None".into()))?;
         (*app, *sub_app)
     };
 
     Ok((order, app, sub_app))
 }
 
-pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, StatusCode> {
-    tracing::info!(body, "create_order");
-    let req_payload: CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
-        tracing::error!("error parsing create_order request payload: {:?}", e);
-        StatusCode::BAD_REQUEST
-    })?;
-
+pub async fn create_order(
+    prisma_client: &crate::prisma::PrismaClient,
+    req_payload: CreateOrderRequestPayload,
+) -> Result<OrderResponsePayload, OrderError> {
     let order_id = crate::utils::generate_id("o_");
-
-    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
-        tracing::error!("error creating prisma client: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
 
     prisma_client
         .order()
@@ -166,35 +148,29 @@ pub async fn create_order(body: String) -> Result<Json<OrderResponsePayload>, St
         )
         .exec()
         .await
-        .map_err(|e| {
-            tracing::error!("error creating order: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|e| OrderError::Unexpected(format!("sql error: {:?}", e)))?;
 
     let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
     let result = OrderResponsePayload::new(&order, &app, &sub_app);
 
-    Ok(Json(result))
+    Ok(result)
 }
 
 pub async fn retrieve_order(
-    Path(order_id): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
-        tracing::error!("error creating prisma client: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
+    prisma_client: &crate::prisma::PrismaClient,
+    order_id: String,
+) -> Result<serde_json::Value, OrderError> {
+    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id)
+        .await
+        .map_err(|e| OrderError::Unexpected(format!("error loading order from db: {:?}", e)))?;
     let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
     let mut result = serde_json::to_value(order_response).map_err(|e| {
-        tracing::error!("error serializing order response payload: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        OrderError::Unexpected(format!("error serializing order response payload: {:?}", e))
     })?;
     let charge = order.charges.unwrap_or_default().first().cloned();
     if let Some(charge) = charge {
         let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-            tracing::error!("error parsing charge channel: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            OrderError::Unexpected(format!("error parsing charge channel: {:?}", e))
         })?;
         let charge_response = ChargeResponsePayload {
             id: charge.id,
@@ -205,9 +181,8 @@ pub async fn retrieve_order(
             credential: charge.credential,
         };
         result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
-            tracing::error!("error serializing charge essentials: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            OrderError::Unexpected(format!("error serializing charge essentials: {:?}", e))
         })?;
     }
-    Ok(Json(result))
+    Ok(result)
 }

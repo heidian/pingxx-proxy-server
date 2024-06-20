@@ -1,15 +1,9 @@
 use super::{
-    ChargeError,
-    ChargeStatus,
     alipay::{self},
-    charge::{ChannelHandler, ChargeResponsePayload, PaymentChannel},
+    charge::{ChannelHandler, ChargeResponsePayload},
     order::OrderResponsePayload,
     weixin::{self},
-};
-use axum::{
-    extract::{Path, Query},
-    http::HeaderMap,
-    http::StatusCode,
+    ChargeError, ChargeStatus, PaymentChannel,
 };
 use serde_json::json;
 use std::str::FromStr;
@@ -67,7 +61,7 @@ async fn process_notify(
     prisma_client: &crate::prisma::PrismaClient,
     charge_id: &str,
     payload: &str,
-) -> Result<String, StatusCode> {
+) -> Result<String, ChargeError> {
     let charge = prisma_client
         .charge()
         .find_unique(crate::prisma::charge::id::equals(charge_id.into()))
@@ -78,67 +72,33 @@ async fn process_notify(
         )
         .exec()
         .await
-        .map_err(|e| {
-            tracing::error!("sql error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or_else(|| {
-            tracing::error!("charge not found: {}", &charge_id);
-            StatusCode::NOT_FOUND
-        })?;
+        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?
+        .ok_or_else(|| ChargeError::MalformedRequest(format!("charge {} not found", charge_id)))?;
     let mut order = *charge.order.clone().ok_or_else(|| {
-        tracing::error!("order not found for charge {}", &charge_id);
-        StatusCode::NOT_FOUND
+        ChargeError::InternalError(format!("order not found for charge {}", &charge_id))
     })?;
     let app = *order.app.clone().ok_or_else(|| {
-        tracing::error!("app not found for charge {}", &charge_id);
-        StatusCode::NOT_FOUND
+        ChargeError::InternalError(format!("app not found for charge {}", &charge_id))
     })?;
     let sub_app = *order.sub_app.clone().ok_or_else(|| {
-        tracing::error!("sub_app not found for charge {}", &charge_id);
-        StatusCode::NOT_FOUND
+        ChargeError::InternalError(format!("sub_app not found for charge {}", &charge_id))
     })?;
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-        tracing::error!("error parsing charge channel: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))
     })?;
 
     let charge_status = match channel {
         PaymentChannel::AlipayPcDirect => {
-            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error initializing alipay_pc_direct handler: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-            handler.process_notify(payload).map_err(|e| {
-                tracing::error!("error processing alipay notify: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?;
+            handler.process_notify(payload)?
         }
         PaymentChannel::AlipayWap => {
-            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error initializing alipay_wap handler: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-            handler.process_notify(payload).map_err(|e| {
-                tracing::error!("error processing alipay notify: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?;
+            handler.process_notify(payload)?
         }
         PaymentChannel::WxPub => {
-            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error initializing wx_pub handler: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-            handler.process_notify(payload).map_err(|e| {
-                tracing::error!("error processing weixin notify: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id).await?;
+            handler.process_notify(payload)?
         }
     };
 
@@ -159,10 +119,7 @@ async fn process_notify(
             )
             .exec()
             .await
-            .map_err(|e| {
-                tracing::error!("sql error: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
         let _ = send_webhook(&app, &sub_app, &order, &charge).await;
     }
@@ -181,55 +138,32 @@ async fn process_notify(
 }
 
 pub async fn create_charge_notify(
-    Query(query): Query<serde_json::Value>,
-    Path(charge_id): Path<String>,
-    headers: HeaderMap,
+    prisma_client: &crate::prisma::PrismaClient,
+    charge_id: String,
     charge_notify_payload: String,
-) -> Result<String, StatusCode> {
-    let headers_str = format!("{:?}", headers);
-    tracing::info!(
-        charge_id = charge_id,
-        query = query.to_string(),
-        payload = charge_notify_payload.as_str(),
-        headers = &headers_str,
-        "create_charge_notify"
-    );
-    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
-        tracing::error!("error getting prisma client: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+) -> Result<String, ChargeError> {
     prisma_client
         .charge_notify_history()
         .create(charge_id.clone(), charge_notify_payload.clone(), vec![])
         .exec()
         .await
-        .map_err(|e| {
-            tracing::error!("sql error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
+        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
     let return_body = process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
     Ok(return_body)
 }
 
-pub async fn retry_charge_notify(Path(id): Path<i32>) -> Result<String, StatusCode> {
-    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
-        tracing::error!("error getting prisma client: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
+pub async fn retry_charge_notify(
+    prisma_client: &crate::prisma::PrismaClient,
+    id: i32,
+) -> Result<String, ChargeError> {
     let history = prisma_client
         .charge_notify_history()
         .find_unique(crate::prisma::charge_notify_history::id::equals(id))
         .exec()
         .await
-        .map_err(|e| {
-            tracing::error!("sql error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
+        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?
         .ok_or_else(|| {
-            tracing::error!("charge notify history not found: {}", id);
-            StatusCode::NOT_FOUND
+            ChargeError::MalformedRequest(format!("charge notify history {} not found", id))
         })?;
     let charge_id = history.charge_id;
     let charge_notify_payload = history.data;

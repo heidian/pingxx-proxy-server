@@ -2,40 +2,12 @@ use super::{
     alipay::{self},
     order::{load_order_from_db, OrderResponsePayload},
     weixin::{self},
-    ChargeError, ChargeStatus,
+    ChargeError, ChargeStatus, OrderError, PaymentChannel,
 };
 use async_trait::async_trait;
-use axum::{extract::Path, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{fmt::Debug, str::FromStr};
-
-#[derive(Deserialize, Serialize, Debug)]
-pub enum PaymentChannel {
-    #[serde(rename = "alipay_pc_direct")]
-    AlipayPcDirect,
-    #[serde(rename = "alipay_wap")]
-    AlipayWap,
-    #[serde(rename = "wx_pub")]
-    WxPub,
-}
-
-impl FromStr for PaymentChannel {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let val = serde_json::Value::String(s.to_string());
-        let channel = serde_json::from_value::<PaymentChannel>(val)
-            .map_err(|e| format!("error parsing PaymentChannel from string: {:?}", e))?;
-        Ok(channel)
-    }
-}
-
-impl ToString for PaymentChannel {
-    fn to_string(&self) -> String {
-        let val = serde_json::to_value(self).unwrap();
-        val.as_str().unwrap().to_string()
-    }
-}
+use std::str::FromStr;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ChargeExtra {
@@ -95,70 +67,37 @@ pub trait ChannelHandler {
 }
 
 pub async fn create_charge(
-    Path(order_id): Path<String>,
-    body: String,
-    // Json(charge_req_payload): Json<CreateChargeRequestPayload>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    tracing::info!(order_id, body, "create_charge");
-    let charge_req_payload: CreateChargeRequestPayload =
-        serde_json::from_str(&body).map_err(|e| {
-            tracing::error!("error parsing create_charge request payload: {:?}", e);
-            StatusCode::BAD_REQUEST
-        })?;
+    prisma_client: &crate::prisma::PrismaClient,
+    order_id: String,
+    charge_req_payload: CreateChargeRequestPayload,
+) -> Result<serde_json::Value, ChargeError> {
     let charge_id = crate::utils::generate_id("ch_");
 
-    let prisma_client = crate::prisma::new_client().await.map_err(|e| {
-        tracing::error!("error getting prisma client: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
+    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id)
+        .await
+        .map_err(|e| match e {
+            OrderError::BadRequest(s) => ChargeError::MalformedRequest(s),
+            OrderError::Unexpected(s) => ChargeError::InternalError(s),
+        })?;
 
     let credential_object = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
-            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error initializing alipay_pc_direct handler: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            let handler = alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?;
             handler
                 .create_credential(&charge_id, &order, &charge_req_payload)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error creating alipay_pc_direct credential: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
+                .await?
         }
         PaymentChannel::AlipayWap => {
-            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error initializing alipay_wap handler: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            let handler = alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?;
             handler
                 .create_credential(&charge_id, &order, &charge_req_payload)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error creating alipay_wap credential: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
+                .await?
         }
         PaymentChannel::WxPub => {
-            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error initializing wx_pub handler: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            let handler = weixin::WxPub::new(&prisma_client, &sub_app.id).await?;
             handler
                 .create_credential(&charge_id, &order, &charge_req_payload)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error creating wx_pub credential: {:?}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
+                .await?
         }
     };
 
@@ -177,8 +116,7 @@ pub async fn create_charge(
     };
 
     let extra = serde_json::to_value(charge_req_payload.extra).map_err(|e| {
-        tracing::error!("error serializing charge extra: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ChargeError::MalformedRequest(format!("error serializing charge extra: {:?}", e))
     })?;
 
     let charge = prisma_client
@@ -194,20 +132,15 @@ pub async fn create_charge(
         )
         .exec()
         .await
-        .map_err(|e| {
-            tracing::error!("error creating charge: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
     let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
     let mut result = serde_json::to_value(order_response).map_err(|e| {
-        tracing::error!("error serializing order response payload: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-        tracing::error!("error parsing charge channel: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))
     })?;
     let charge_response = ChargeResponsePayload {
         id: charge.id,
@@ -218,9 +151,8 @@ pub async fn create_charge(
         credential: charge.credential,
     };
     result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
-        tracing::error!("error serializing charge essentials: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ChargeError::InternalError(format!("error serializing charge essentials: {:?}", e))
     })?;
 
-    Ok(Json(result))
+    Ok(result)
 }
