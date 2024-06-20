@@ -1,4 +1,4 @@
-use super::{charge::ChargeResponsePayload, OrderError, PaymentChannel};
+use super::{charge::ChargeResponsePayload, utils::load_order_from_db, OrderError, PaymentChannel};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
@@ -73,49 +73,6 @@ impl OrderResponsePayload {
             metadata: order.metadata.clone(),
         }
     }
-}
-
-pub async fn load_order_from_db(
-    prisma_client: &crate::prisma::PrismaClient,
-    order_id: &str,
-) -> Result<
-    (
-        crate::prisma::order::Data,
-        crate::prisma::app::Data,
-        crate::prisma::sub_app::Data,
-    ),
-    OrderError,
-> {
-    let order = prisma_client
-        .order()
-        .find_unique(crate::prisma::order::id::equals(order_id.to_string()))
-        .with(crate::prisma::order::sub_app::fetch())
-        .with(crate::prisma::order::app::fetch())
-        .with(
-            crate::prisma::order::charges::fetch(vec![
-                // crate::prisma::charge::is_valid::equals(true)
-            ])
-            .order_by(crate::prisma::charge::created_at::order(
-                prisma_client_rust::Direction::Desc,
-            )), // .take(1),
-        )
-        .exec()
-        .await
-        .map_err(|e| OrderError::Unexpected(format!("sql error: {:?}", e)))?
-        .ok_or_else(|| OrderError::BadRequest(format!("order {} not found", order_id)))?;
-
-    let (app, sub_app) = {
-        let order = order.clone();
-        let app = order
-            .app
-            .ok_or_else(|| OrderError::Unexpected("order.app is None".into()))?;
-        let sub_app = order
-            .sub_app
-            .ok_or_else(|| OrderError::Unexpected("order.sub_app is None".into()))?;
-        (*app, *sub_app)
-    };
-
-    Ok((order, app, sub_app))
 }
 
 pub async fn create_order(

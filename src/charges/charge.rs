@@ -1,10 +1,10 @@
 use super::{
     alipay::{self},
-    order::{load_order_from_db, OrderResponsePayload},
+    order::OrderResponsePayload,
+    utils::load_order_from_db,
     weixin::{self},
-    ChargeError, ChargeStatus, OrderError, PaymentChannel,
+    ChannelHandler, ChargeError, PaymentChannel,
 };
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
@@ -36,36 +36,6 @@ pub struct ChargeResponsePayload {
     pub credential: serde_json::Value,
 }
 
-pub async fn load_channel_params_from_db(
-    prisma_client: &crate::prisma::PrismaClient,
-    sub_app_id: &str,
-    channel: &PaymentChannel,
-) -> Result<crate::prisma::channel_params::Data, String> {
-    let channel_params = prisma_client
-        .channel_params()
-        .find_unique(crate::prisma::channel_params::sub_app_id_channel(
-            sub_app_id.to_string(),
-            channel.to_string(),
-        ))
-        .exec()
-        .await
-        .map_err(|e| format!("sql error: {:?}", e))?
-        .ok_or_else(|| format!("channel_params for {:?} not found", channel))?;
-    Ok(channel_params)
-}
-
-#[async_trait]
-pub trait ChannelHandler {
-    async fn create_credential(
-        &self,
-        charge_id: &str,
-        order: &crate::prisma::order::Data,
-        charge_req_payload: &CreateChargeRequestPayload,
-    ) -> Result<serde_json::Value, ChargeError>;
-
-    fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
-}
-
 pub async fn create_charge(
     prisma_client: &crate::prisma::PrismaClient,
     order_id: String,
@@ -73,12 +43,7 @@ pub async fn create_charge(
 ) -> Result<serde_json::Value, ChargeError> {
     let charge_id = crate::utils::generate_id("ch_");
 
-    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id)
-        .await
-        .map_err(|e| match e {
-            OrderError::BadRequest(s) => ChargeError::MalformedRequest(s),
-            OrderError::Unexpected(s) => ChargeError::InternalError(s),
-        })?;
+    let (order, app, sub_app) = load_order_from_db(&prisma_client, &order_id).await?;
 
     let handler: Box<dyn ChannelHandler + Send> = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {

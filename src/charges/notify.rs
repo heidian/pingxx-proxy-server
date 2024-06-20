@@ -1,9 +1,10 @@
 use super::{
     alipay::{self},
-    charge::{ChannelHandler, ChargeResponsePayload},
+    charge::ChargeResponsePayload,
     order::OrderResponsePayload,
+    utils::load_charge_from_db,
     weixin::{self},
-    ChargeError, ChargeStatus, PaymentChannel,
+    ChannelHandler, ChargeError, ChargeStatus, PaymentChannel,
 };
 use serde_json::json;
 use std::str::FromStr;
@@ -62,27 +63,8 @@ async fn process_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let charge = prisma_client
-        .charge()
-        .find_unique(crate::prisma::charge::id::equals(charge_id.into()))
-        .with(
-            crate::prisma::charge::order::fetch()
-                .with(crate::prisma::order::sub_app::fetch())
-                .with(crate::prisma::order::app::fetch()),
-        )
-        .exec()
-        .await
-        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?
-        .ok_or_else(|| ChargeError::MalformedRequest(format!("charge {} not found", charge_id)))?;
-    let mut order = *charge.order.clone().ok_or_else(|| {
-        ChargeError::InternalError(format!("order not found for charge {}", &charge_id))
-    })?;
-    let app = *order.app.clone().ok_or_else(|| {
-        ChargeError::InternalError(format!("app not found for charge {}", &charge_id))
-    })?;
-    let sub_app = *order.sub_app.clone().ok_or_else(|| {
-        ChargeError::InternalError(format!("sub_app not found for charge {}", &charge_id))
-    })?;
+    let (charge, mut order, app, sub_app) = load_charge_from_db(&prisma_client, charge_id).await?;
+
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
         ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))
     })?;

@@ -22,12 +22,6 @@ pub enum WeixinError {
     Unexpected(String),
 }
 
-impl From<String> for WeixinError {
-    fn from(e: String) -> Self {
-        WeixinError::Unexpected(e)
-    }
-}
-
 use crate::charges::ChargeError;
 impl From<WeixinError> for ChargeError {
     fn from(e: WeixinError) -> ChargeError {

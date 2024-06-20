@@ -1,5 +1,5 @@
 use super::super::{
-    charge::{load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload},
+    charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
     ChargeError, ChargeStatus, PaymentChannel,
 };
 use super::config::{AlipayApiType, AlipayError, AlipayWapConfig};
@@ -19,7 +19,7 @@ impl AlipayWap {
         let channel_params =
             load_channel_params_from_db(&prisma_client, &sub_app_id, &PaymentChannel::AlipayWap)
                 .await
-                .map_err(|e| AlipayError::InvalidConfig(e))?;
+                .map_err(|e| AlipayError::InvalidConfig(format!("{:?}", e)))?;
         let config: AlipayWapConfig =
             serde_json::from_value(channel_params.params).map_err(|e| {
                 AlipayError::InvalidConfig(

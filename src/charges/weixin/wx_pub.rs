@@ -1,5 +1,5 @@
 use super::super::{
-    charge::{load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload},
+    charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
     ChargeError, ChargeStatus, PaymentChannel,
 };
 use super::config::{WeixinError, WxPubConfig};
@@ -20,7 +20,7 @@ impl WxPub {
         let channel_params =
             load_channel_params_from_db(&prisma_client, &sub_app_id, &PaymentChannel::WxPub)
                 .await
-                .map_err(|e| WeixinError::InvalidConfig(e))?;
+                .map_err(|e| WeixinError::InvalidConfig(format!("{:?}", e)))?;
         let config: WxPubConfig = serde_json::from_value(channel_params.params).map_err(|e| {
             WeixinError::InvalidConfig(format!("error deserializing wx_pub config: {:?}", e).into())
         })?;

@@ -1,5 +1,5 @@
 use super::super::{
-    charge::{load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload},
+    charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
     ChargeError, ChargeStatus, PaymentChannel,
 };
 use super::config::{AlipayApiType, AlipayError, AlipayPcDirectConfig};
@@ -22,7 +22,7 @@ impl AlipayPcDirect {
             &PaymentChannel::AlipayPcDirect,
         )
         .await
-        .map_err(|e| AlipayError::InvalidConfig(e))?;
+        .map_err(|e| AlipayError::InvalidConfig(format!("{:?}", e)))?;
         let config: AlipayPcDirectConfig =
             serde_json::from_value(channel_params.params).map_err(|e| {
                 AlipayError::InvalidConfig(

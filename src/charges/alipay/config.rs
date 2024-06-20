@@ -93,12 +93,6 @@ impl From<data_encoding::DecodeError> for AlipayError {
     }
 }
 
-impl From<String> for AlipayError {
-    fn from(e: String) -> Self {
-        AlipayError::Unexpected(e)
-    }
-}
-
 use crate::charges::ChargeError;
 impl From<AlipayError> for ChargeError {
     fn from(e: AlipayError) -> ChargeError {
