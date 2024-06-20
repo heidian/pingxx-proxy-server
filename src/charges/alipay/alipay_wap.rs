@@ -2,9 +2,11 @@ use super::super::{
     charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
     ChargeError, ChargeStatus, PaymentChannel,
 };
-use super::config::{AlipayApiType, AlipayError, AlipayWapConfig};
-use super::mapi::{MapiNotifyPayload, MapiRequestPayload};
-use super::openapi::{OpenApiNotifyPayload, OpenApiRequestPayload};
+use super::{
+    mapi::{MapiNotifyPayload, MapiRequestPayload},
+    openapi::{OpenApiNotifyPayload, OpenApiRequestPayload},
+    AlipayApiType, AlipayError, AlipayWapConfig,
+};
 use async_trait::async_trait;
 
 pub struct AlipayWap {

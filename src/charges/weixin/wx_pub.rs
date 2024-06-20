@@ -2,8 +2,10 @@ use super::super::{
     charge::CreateChargeRequestPayload, utils::load_channel_params_from_db, ChannelHandler,
     ChargeError, ChargeStatus, PaymentChannel,
 };
-use super::config::{WeixinError, WxPubConfig};
-use super::v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload};
+use super::{
+    v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload},
+    WeixinError, WxPubConfig,
+};
 use async_trait::async_trait;
 use serde_json::json;
 use std::collections::HashMap;

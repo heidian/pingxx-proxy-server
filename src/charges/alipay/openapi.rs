@@ -1,17 +1,16 @@
-use super::config::AlipayError;
+use super::AlipayError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 
 mod openapi_rsa2 {
-    use crate::charges::alipay::config::AlipayError;
+    use super::*;
     use openssl::{
         hash::MessageDigest,
         pkey::PKey,
         rsa::Rsa,
         sign::{Signer, Verifier},
     };
-    use std::collections::HashMap;
 
     pub fn sign(m: &HashMap<String, String>, private_key: &str) -> Result<String, AlipayError> {
         let mut query_list = Vec::<String>::new();

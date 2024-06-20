@@ -1,9 +1,9 @@
-use super::config::WeixinError;
+use super::WeixinError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub mod v2api_md5 {
-    use std::collections::HashMap;
+    use super::*;
     /**
      * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=4_3
      * 对 m 的所有字段进行签名, 所以 m 里面不能包含不需要签名的字段比如 sign, paySign, 或者他们需要为空
