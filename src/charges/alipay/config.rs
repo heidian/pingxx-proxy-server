@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -70,54 +69,45 @@ pub struct AlipayWapConfig {
     pub alipay_wap_public_key_rsa2: String,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum AlipayTradeStatus {
-    TradeSuccess,
-    TradeFinished,
-}
-
-impl FromStr for AlipayTradeStatus {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "TRADE_SUCCESS" => Ok(AlipayTradeStatus::TradeSuccess),
-            "TRADE_FINISHED" => Ok(AlipayTradeStatus::TradeFinished),
-            _ => Err(format!("unknown alipay trade status: {}", s)),
-        }
-    }
-}
-
 #[derive(Error, Debug)]
 pub enum AlipayError {
-    #[error("malformed request payload: {0}")]
-    MalformedPayload(String),
-    #[error("internal error: {0}")]
-    InternalError(String),
+    #[error("[Malformed Alipay Request] {0}")]
+    MalformedRequest(String),
+    #[error("[Failed Communicating Alipay API] {0}")]
+    ApiError(String),
+    #[error("[Invalid Alipay Channel Params] {0}")]
+    InvalidConfig(String),
+    #[error("[Unexpected Alipay Error] {0}")]
+    Unexpected(String),
 }
 
 impl From<openssl::error::ErrorStack> for AlipayError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        AlipayError::InternalError(format!("[openssl] {:?}", e))
+        AlipayError::Unexpected(format!("[openssl] {:?}", e))
     }
 }
 
 impl From<data_encoding::DecodeError> for AlipayError {
     fn from(e: data_encoding::DecodeError) -> Self {
-        AlipayError::InternalError(format!("[base64] {:?}", e))
+        AlipayError::Unexpected(format!("[base64] {:?}", e))
     }
 }
 
 impl From<String> for AlipayError {
     fn from(e: String) -> Self {
-        AlipayError::InternalError(e)
+        AlipayError::Unexpected(e)
     }
 }
 
-impl From<AlipayError> for crate::charges::ChargeError {
-    fn from(e: AlipayError) -> crate::charges::ChargeError {
+use crate::charges::ChargeError;
+impl From<AlipayError> for ChargeError {
+    fn from(e: AlipayError) -> ChargeError {
+        tracing::error!("{:?}", e);
         match e {
-            AlipayError::MalformedPayload(e) => crate::charges::ChargeError::MalformedPayload(e),
-            AlipayError::InternalError(e) => crate::charges::ChargeError::InternalError(e),
+            AlipayError::MalformedRequest(e) => ChargeError::MalformedRequest(e),
+            AlipayError::ApiError(e) => ChargeError::InternalError(e),
+            AlipayError::InvalidConfig(e) => ChargeError::InternalError(e),
+            AlipayError::Unexpected(e) => ChargeError::InternalError(e),
         }
     }
 }

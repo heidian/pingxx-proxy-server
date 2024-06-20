@@ -1,9 +1,7 @@
 use super::config::AlipayError;
-use super::config::AlipayTradeStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use std::str::FromStr;
 
 mod openapi_rsa2 {
     use crate::charges::alipay::config::AlipayError;
@@ -94,7 +92,7 @@ impl OpenApiRequestPayload {
                 let seconds = time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
             } else {
-                return Err(AlipayError::MalformedPayload(
+                return Err(AlipayError::MalformedRequest(
                     "expire_in_seconds < now".into(),
                 ));
             }
@@ -139,7 +137,7 @@ impl OpenApiRequestPayload {
 }
 
 pub struct OpenApiNotifyPayload {
-    pub status: AlipayTradeStatus,
+    pub trade_status: String,
     pub merchant_order_no: String, // 商户订单号
     pub amount: i32,               // 精确到分
     signature: String,
@@ -170,7 +168,7 @@ impl OpenApiNotifyPayload {
         // tracing::debug!("m: {:?}", m);
 
         fn missing_params() -> AlipayError {
-            AlipayError::MalformedPayload("missing required params".into())
+            AlipayError::ApiError("missing required params".into())
         }
 
         let sign_type = m.get("sign_type").ok_or_else(missing_params)?;
@@ -180,19 +178,16 @@ impl OpenApiNotifyPayload {
         let total_amount = m.get("total_amount").ok_or_else(missing_params)?;
 
         if sign_type != "RSA2" {
-            return Err(AlipayError::MalformedPayload("sign_type not RSA2".into()));
+            return Err(AlipayError::ApiError("sign_type not RSA2".into()));
         }
-
-        let trade_status = AlipayTradeStatus::from_str(trade_status)
-            .map_err(|_| AlipayError::MalformedPayload("unknown trade_status".into()))?;
 
         let amount = (total_amount
             .parse::<f64>()
-            .map_err(|_| AlipayError::MalformedPayload("invalid total_amount".into()))?
+            .map_err(|_| AlipayError::ApiError("invalid total_amount".into()))?
             * 100.0) as i32;
 
         Ok(Self {
-            status: trade_status,
+            trade_status: trade_status.to_owned(),
             merchant_order_no: out_trade_no.to_owned(),
             amount,
             signature: signature.to_owned(),
@@ -200,12 +195,15 @@ impl OpenApiNotifyPayload {
         })
     }
 
-    pub fn verify_rsa2_sign(&self, public_key: &str) -> Result<bool, AlipayError> {
+    pub fn verify_rsa2_sign(&self, public_key: &str) -> Result<(), AlipayError> {
         let mut m = self.m.clone();
         // k != "sign" && k != "sign_type";
         m.remove("sign_type");
         m.remove("sign");
         let verified = openapi_rsa2::verify(&m, &self.signature, public_key)?;
-        Ok(verified)
+        if !verified {
+            return Err(AlipayError::ApiError("wrong rsa2 signature".into()));
+        }
+        Ok(())
     }
 }

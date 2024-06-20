@@ -1,6 +1,6 @@
-use super::config::{WeixinError, WeixinTradeStatus};
+use super::config::WeixinError;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 pub mod v2api_md5 {
     use std::collections::HashMap;
@@ -57,9 +57,26 @@ pub struct V2ApiRequestPayload {
     pub openid: String,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+pub struct WxJSAPIResponse {
+    pub return_code: String,
+    pub return_msg: String,
+
+    pub appid: Option<String>,
+    pub mch_id: Option<String>,
+    pub nonce_str: Option<String>,
+    pub sign: Option<String>,
+    pub result_code: Option<String>,
+    pub err_code: Option<String>,
+    pub err_code_des: Option<String>,
+
+    pub trade_type: Option<String>,
+    pub prepay_id: Option<String>,
+}
+
 impl V2ApiRequestPayload {
     pub fn new(
-        charge_id: &str,        //
+        charge_id: &str,         //
         wx_pub_app_id: &str,     // 微信公众号 app id
         wx_pub_mch_id: &str,     // 微信支付商户 id
         open_id: &str,           // 支付成功跳转
@@ -71,7 +88,9 @@ impl V2ApiRequestPayload {
         body: &str,              // 详情
     ) -> Result<Self, WeixinError> {
         let time_expire = chrono::DateTime::<chrono::Utc>::from_timestamp(time_expire as i64, 0)
-            .ok_or_else(|| WeixinError::MalformedPayload("can't convert timestamp to datetime".into()))?
+            .ok_or_else(|| {
+                WeixinError::MalformedRequest("can't convert timestamp to datetime".into())
+            })?
             .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
             .format("%Y%m%d%H%M%S")
             .to_string();
@@ -118,10 +137,48 @@ impl V2ApiRequestPayload {
         self.sign = signature.clone();
         Ok(signature)
     }
+
+    /**
+     * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=7_7&index=6
+     * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=9_1
+     */
+    pub async fn create_prepay_order(&self) -> Result<WxJSAPIResponse, WeixinError> {
+        let xml_payload = quick_xml::se::to_string_with_root("xml", &self)
+            .map_err(|e| WeixinError::Unexpected(format!("malformed xml payload: {}", e)))?;
+
+        let res = reqwest::Client::new()
+            .post("https://api.mch.weixin.qq.com/pay/unifiedorder")
+            .body(xml_payload)
+            .send()
+            .await
+            .map_err(|e| WeixinError::ApiError(format!("error request unifiedorder api: {}", e)))?;
+        let res_text = res.text().await.map_err(|e| {
+            WeixinError::ApiError(format!("error parse unifiedorder response: {}", e))
+        })?;
+        tracing::debug!("unifiedorder response: {:?}", res_text);
+
+        let res_obj: WxJSAPIResponse = quick_xml::de::from_str(&res_text).map_err(|e| {
+            WeixinError::ApiError(format!("error deserialize WxJSAPIResponse: {}", e))
+        })?;
+        if res_obj.return_code != "SUCCESS" {
+            return Err(WeixinError::ApiError(format!(
+                "unifiedorder return_code != SUCCESS: {}",
+                &res_obj.return_msg
+            )));
+        }
+        if res_obj.result_code != Some("SUCCESS".to_string()) {
+            return Err(WeixinError::ApiError(format!(
+                "unifiedorder result_code != SUCCESS: {:?}",
+                res_obj.err_code_des.as_ref()
+            )));
+        }
+
+        Ok(res_obj)
+    }
 }
 
 pub struct V2ApiNotifyPayload {
-    pub status: WeixinTradeStatus,
+    pub trade_status: String,
     pub merchant_order_no: String,
     pub amount: i32,
     signature: String,
@@ -152,24 +209,17 @@ impl V2ApiNotifyPayload {
                     m.insert(key, value);
                 }
                 Ok(quick_xml::events::Event::Eof) => break,
-                Err(e) => {
-                    return Err(WeixinError::MalformedPayload(format!(
-                        "error parsing xml {}",
-                        e
-                    )))
-                }
+                Err(e) => return Err(WeixinError::ApiError(format!("error parsing xml {}", e))),
                 _ => {}
             }
         }
 
         if m.get("return_code") != Some(&"SUCCESS".to_string()) {
-            return Err(WeixinError::MalformedPayload(
-                "return_code not SUCCESS".into(),
-            ));
+            return Err(WeixinError::ApiError("return_code not SUCCESS".into()));
         }
 
         fn missing_params() -> WeixinError {
-            WeixinError::MalformedPayload("missing required params".into())
+            WeixinError::ApiError("missing required params".into())
         }
 
         let signature = m.get("signature").ok_or_else(missing_params)?;
@@ -177,16 +227,13 @@ impl V2ApiNotifyPayload {
         let out_trade_no = m.get("out_trade_no").ok_or_else(missing_params)?;
         let total_fee = m.get("total_fee").ok_or_else(missing_params)?;
 
-        let trade_status = WeixinTradeStatus::from_str(trade_status)
-            .map_err(|_| WeixinError::MalformedPayload("unknown trade_status".into()))?;
-
         let amount = (total_fee
             .parse::<f64>()
-            .map_err(|_| WeixinError::MalformedPayload("invalid total_fee".into()))?
+            .map_err(|_| WeixinError::ApiError("invalid total_fee".into()))?
             * 100.0) as i32;
 
         Ok(Self {
-            status: trade_status,
+            trade_status: trade_status.to_owned(),
             merchant_order_no: out_trade_no.to_owned(),
             amount,
             signature: signature.to_owned(),
@@ -194,11 +241,14 @@ impl V2ApiNotifyPayload {
         })
     }
 
-    pub fn verify_md5_sign(&self, public_key: &str) -> Result<bool, WeixinError> {
+    pub fn verify_md5_sign(&self, public_key: &str) -> Result<(), WeixinError> {
         let mut m = self.m.clone();
         // k != "sign";
         m.remove("sign");
         let verified = v2api_md5::verify(&self.m, &self.signature, public_key);
-        Ok(verified)
+        if !verified {
+            return Err(WeixinError::ApiError("wrong md5 signature".into()));
+        }
+        Ok(())
     }
 }

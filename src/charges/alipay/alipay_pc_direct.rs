@@ -1,11 +1,10 @@
 use super::super::{
-    ChargeError,
-    ChargeStatus,
     charge::{
         load_channel_params_from_db, ChannelHandler, CreateChargeRequestPayload, PaymentChannel,
-    }
+    },
+    ChargeError, ChargeStatus,
 };
-use super::config::{AlipayApiType, AlipayError, AlipayPcDirectConfig, AlipayTradeStatus};
+use super::config::{AlipayApiType, AlipayError, AlipayPcDirectConfig};
 use super::mapi::{MapiNotifyPayload, MapiRequestPayload};
 use super::openapi::{OpenApiNotifyPayload, OpenApiRequestPayload};
 use async_trait::async_trait;
@@ -19,12 +18,19 @@ impl AlipayPcDirect {
         prisma_client: &crate::prisma::PrismaClient,
         sub_app_id: &str,
     ) -> Result<Self, AlipayError> {
-        let config = load_channel_params_from_db::<AlipayPcDirectConfig, AlipayError>(
+        let channel_params = load_channel_params_from_db(
             &prisma_client,
             &sub_app_id,
             &PaymentChannel::AlipayPcDirect,
         )
-        .await?;
+        .await
+        .map_err(|e| AlipayError::InvalidConfig(e))?;
+        let config: AlipayPcDirectConfig =
+            serde_json::from_value(channel_params.params).map_err(|e| {
+                AlipayError::InvalidConfig(
+                    format!("error deserializing alipay_pc_direct config: {:?}", e).into(),
+                )
+            })?;
         Ok(Self { config })
     }
 }
@@ -42,7 +48,7 @@ impl ChannelHandler for AlipayPcDirect {
             Some(url) => url.to_string(),
             None => "".to_string(),
         };
-        match config.alipay_version {
+        let res_json = match config.alipay_version {
             AlipayApiType::MAPI => {
                 let mut mapi_request_payload = MapiRequestPayload::new(
                     charge_id,
@@ -74,34 +80,31 @@ impl ChannelHandler for AlipayPcDirect {
                 openapi_request_payload.sign_rsa2(&config.alipay_private_key_rsa2)?;
                 serde_json::to_value(openapi_request_payload)
             }
-        }
-        .map_err(|e| {
-            ChargeError::MalformedPayload(format!("error serializing MapiRequestPayload: {:?}", e))
-        })
+        };
+        let res_json = res_json.map_err(|e| {
+            AlipayError::Unexpected(format!("error serializing MapiRequestPayload: {:?}", e))
+        })?;
+        Ok(res_json)
     }
 
     fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
         let config = &self.config;
-        let trade_status = match config.alipay_version {
+        let success = match config.alipay_version {
             AlipayApiType::MAPI => {
                 let notify_payload = MapiNotifyPayload::new(payload)?;
-                let verified = notify_payload.verify_rsa_sign(&config.alipay_public_key)?;
-                if !verified {
-                    return Err(ChargeError::MalformedPayload("wrong rsa sign".into()));
-                }
-                notify_payload.status
+                notify_payload.verify_rsa_sign(&config.alipay_public_key)?;
+                let trade_status = notify_payload.trade_status;
+                trade_status == "TRADE_SUCCESS" || trade_status == "TRADE_FINISHED"
             }
             AlipayApiType::OPENAPI => {
                 let notify_payload = OpenApiNotifyPayload::new(payload)?;
-                let verified = notify_payload.verify_rsa2_sign(&config.alipay_public_key_rsa2)?;
-                if !verified {
-                    return Err(ChargeError::MalformedPayload("wrong rsa2 sign".into()));
-                }
-                notify_payload.status
+                notify_payload.verify_rsa2_sign(&config.alipay_public_key_rsa2)?;
+                let trade_status = notify_payload.trade_status;
+                trade_status == "TRADE_SUCCESS" || trade_status == "TRADE_FINISHED"
             }
         };
         // TODO! 需要验证 OpenApiNotifyPayload 上的 out_trade_no 和 total_amount
-        if trade_status == AlipayTradeStatus::TradeSuccess || trade_status == AlipayTradeStatus::TradeFinished {
+        if success {
             Ok(ChargeStatus::Success)
         } else {
             Ok(ChargeStatus::Fail)

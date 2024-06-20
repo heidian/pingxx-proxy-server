@@ -17,9 +17,9 @@ pub enum ChargeStatus {
 
 #[derive(Error, Debug)]
 pub enum ChargeError {
-    #[error("malformed request payload: {0}")]
-    MalformedPayload(String),
-    #[error("internal error: {0}")]
+    #[error("[Malformed Charge Request] {0}")]
+    MalformedRequest(String),
+    #[error("[Internal Error] {0}")]
     InternalError(String),
 }
 

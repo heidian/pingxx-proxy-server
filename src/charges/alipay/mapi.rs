@@ -1,7 +1,6 @@
-use super::config::{AlipayError, AlipayTradeStatus};
+use super::config::AlipayError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::str::FromStr;
 
 mod mapi_rsa {
     use crate::charges::alipay::config::AlipayError;
@@ -94,7 +93,7 @@ impl MapiRequestPayload {
                 let seconds = time_expire - now;
                 format!("{}m", if seconds > 60 { seconds / 60 } else { 1 })
             } else {
-                return Err(AlipayError::MalformedPayload(
+                return Err(AlipayError::MalformedRequest(
                     "expire_in_seconds < now".into(),
                 ));
             }
@@ -132,7 +131,7 @@ impl MapiRequestPayload {
 }
 
 pub struct MapiNotifyPayload {
-    pub status: AlipayTradeStatus,
+    pub trade_status: String,
     pub merchant_order_no: String,
     pub amount: i32,
     signature: String,
@@ -162,7 +161,7 @@ impl MapiNotifyPayload {
         });
 
         fn missing_params() -> AlipayError {
-            AlipayError::MalformedPayload("missing required params".into())
+            AlipayError::ApiError("missing required params".into())
         }
 
         let sign_type = m.get("sign_type").ok_or_else(missing_params)?;
@@ -172,19 +171,16 @@ impl MapiNotifyPayload {
         let total_fee = m.get("total_fee").ok_or_else(missing_params)?;
 
         if sign_type != "RSA" {
-            return Err(AlipayError::MalformedPayload("sign_type not RSA".into()));
+            return Err(AlipayError::ApiError("sign_type not RSA".into()));
         }
-
-        let trade_status = AlipayTradeStatus::from_str(trade_status)
-            .map_err(|_| AlipayError::MalformedPayload("unknown trade_status".into()))?;
 
         let amount = (total_fee
             .parse::<f64>()
-            .map_err(|_| AlipayError::MalformedPayload("invalid total_fee".into()))?
+            .map_err(|_| AlipayError::ApiError("invalid total_fee".into()))?
             * 100.0) as i32;
 
         Ok(Self {
-            status: trade_status,
+            trade_status: trade_status.to_owned(),
             merchant_order_no: out_trade_no.to_owned(),
             amount,
             signature: signature.to_owned(),
@@ -192,12 +188,15 @@ impl MapiNotifyPayload {
         })
     }
 
-    pub fn verify_rsa_sign(&self, public_key: &str) -> Result<bool, AlipayError> {
+    pub fn verify_rsa_sign(&self, public_key: &str) -> Result<(), AlipayError> {
         let mut m = self.m.clone();
         // k != "sign" && k != "sign_type";
         m.remove("sign_type");
         m.remove("sign");
         let verified = mapi_rsa::verify(&m, &self.signature, public_key)?;
-        Ok(verified)
+        if !verified {
+            return Err(AlipayError::ApiError("wrong rsa signature".into()));
+        }
+        Ok(())
     }
 }

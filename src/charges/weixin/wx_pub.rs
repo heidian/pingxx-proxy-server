@@ -4,29 +4,11 @@ use super::super::{
     },
     ChargeError, ChargeStatus,
 };
-use super::config::{WeixinError, WeixinTradeStatus, WxPubConfig};
+use super::config::{WeixinError, WxPubConfig};
 use super::v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-
-#[derive(Deserialize, Serialize, Debug)]
-struct WxJSAPIResponse {
-    return_code: String,
-    return_msg: String,
-
-    appid: Option<String>,
-    mch_id: Option<String>,
-    nonce_str: Option<String>,
-    sign: Option<String>,
-    result_code: Option<String>,
-    err_code: Option<String>,
-    err_code_des: Option<String>,
-
-    trade_type: Option<String>,
-    prepay_id: Option<String>,
-}
 
 pub struct WxPub {
     config: WxPubConfig,
@@ -37,22 +19,19 @@ impl WxPub {
         prisma_client: &crate::prisma::PrismaClient,
         sub_app_id: &str,
     ) -> Result<Self, WeixinError> {
-        let config = load_channel_params_from_db::<WxPubConfig, WeixinError>(
-            &prisma_client,
-            &sub_app_id,
-            &PaymentChannel::WxPub,
-        )
-        .await?;
+        let channel_params =
+            load_channel_params_from_db(&prisma_client, &sub_app_id, &PaymentChannel::WxPub)
+                .await
+                .map_err(|e| WeixinError::InvalidConfig(e))?;
+        let config: WxPubConfig = serde_json::from_value(channel_params.params).map_err(|e| {
+            WeixinError::InvalidConfig(format!("error deserializing wx_pub config: {:?}", e).into())
+        })?;
         Ok(Self { config })
     }
 }
 
 #[async_trait]
 impl ChannelHandler for WxPub {
-    /**
-     * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=7_7&index=6
-     * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=9_1
-     */
     async fn create_credential(
         &self,
         _charge_id: &str,
@@ -79,37 +58,7 @@ impl ChannelHandler for WxPub {
 
         v2_api_payload.sign_md5(&config.wx_pub_key)?;
 
-        let xml_payload = quick_xml::se::to_string_with_root("xml", &v2_api_payload)
-            .map_err(|e| WeixinError::MalformedPayload(format!("malformed xml payload: {}", e)))?;
-
-        let res = reqwest::Client::new()
-            .post("https://api.mch.weixin.qq.com/pay/unifiedorder")
-            .body(xml_payload)
-            .send()
-            .await
-            .map_err(|e| {
-                WeixinError::InternalError(format!("error request unifiedorder api: {}", e))
-            })?;
-        let res_text = res.text().await.map_err(|e| {
-            WeixinError::InternalError(format!("error parse unifiedorder response: {}", e))
-        })?;
-        tracing::debug!("unifiedorder response: {:?}", res_text);
-
-        let res_obj: WxJSAPIResponse = quick_xml::de::from_str(&res_text).map_err(|e| {
-            WeixinError::MalformedPayload(format!("error deserialize WxJSAPIResponse: {}", e))
-        })?;
-        if res_obj.return_code != "SUCCESS" {
-            return Err(ChargeError::InternalError(format!(
-                "unifiedorder return_code != SUCCESS: {}",
-                &res_obj.return_msg
-            )));
-        }
-        if res_obj.result_code != Some("SUCCESS".to_string()) {
-            return Err(ChargeError::InternalError(format!(
-                "unifiedorder result_code != SUCCESS: {:?}",
-                res_obj.err_code_des.as_ref()
-            )));
-        }
+        let res_obj = v2_api_payload.create_prepay_order().await?;
 
         /* paySign 不是用前面的 sign, 需要重新生成 */
         let mut res_json = json!({
@@ -130,12 +79,9 @@ impl ChannelHandler for WxPub {
     fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
         let config = &self.config;
         let notify_payload = V2ApiNotifyPayload::new(payload)?;
-        let verified = notify_payload.verify_md5_sign(&config.wx_pub_key)?;
-        if !verified {
-            return Err(ChargeError::MalformedPayload("wrong md5 sign".into()));
-        }
-        let trade_status = notify_payload.status;
-        if trade_status == WeixinTradeStatus::Success {
+        notify_payload.verify_md5_sign(&config.wx_pub_key)?;
+        let trade_status = notify_payload.trade_status;
+        if trade_status == "SUCCESS" {
             Ok(ChargeStatus::Success)
         } else {
             Ok(ChargeStatus::Fail)

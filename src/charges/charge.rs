@@ -64,15 +64,11 @@ pub struct ChargeResponsePayload {
     pub credential: serde_json::Value,
 }
 
-pub async fn load_channel_params_from_db<T, E>(
+pub async fn load_channel_params_from_db(
     prisma_client: &crate::prisma::PrismaClient,
     sub_app_id: &str,
     channel: &PaymentChannel,
-) -> Result<T, E>
-where
-    T: for<'a> Deserialize<'a>,
-    E: From<String>,
-{
+) -> Result<crate::prisma::channel_params::Data, String> {
     let channel_params = prisma_client
         .channel_params()
         .find_unique(crate::prisma::channel_params::sub_app_id_channel(
@@ -81,11 +77,9 @@ where
         ))
         .exec()
         .await
-        .map_err(|e| format!("sql error: {:?}", e).into())?
-        .ok_or_else(|| format!("order not found").into())?;
-    let config: T = serde_json::from_value(channel_params.params)
-        .map_err(|e| format!("error deserializing alipay_wap config: {:?}", e).into())?;
-    Ok(config)
+        .map_err(|e| format!("sql error: {:?}", e))?
+        .ok_or_else(|| format!("channel_params for {:?} not found", channel))?;
+    Ok(channel_params)
 }
 
 #[async_trait]
