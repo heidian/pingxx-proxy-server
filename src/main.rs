@@ -5,7 +5,7 @@ use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 
 mod alipay;
-mod charges;
+mod routes;
 mod core;
 #[allow(dead_code, unused_imports)]
 mod prisma;
@@ -17,7 +17,7 @@ async fn main() {
     dotenv().ok();
     tracing_subscriber::fmt::init();
     // build our application with a route
-    let charge_routes = charges::get_routes().await;
+    let charge_routes = routes::get_routes().await;
     let app = Router::new()
         .nest("/", charge_routes)
         .route("/", get(root))
