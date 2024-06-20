@@ -19,14 +19,14 @@ pub struct ChargeExtra {
     pub open_id: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct CreateChargeRequestPayload {
     pub charge_amount: i32,
     pub channel: PaymentChannel,
     pub extra: ChargeExtra,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct ChargeResponsePayload {
     pub id: String,
     pub object: String,

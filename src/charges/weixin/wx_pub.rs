@@ -41,7 +41,11 @@ impl ChannelHandler for WxPub {
         let config = &self.config;
         let open_id = match charge_req_payload.extra.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
-            None => "".to_string(),
+            None => {
+                return Err(ChargeError::MalformedRequest(
+                    "missing open_id in charge extra".to_string(),
+                ))
+            },
         };
         let mut v2_api_payload = V2ApiRequestPayload::new(
             _charge_id,

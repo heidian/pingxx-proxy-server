@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct CreateOrderRequestPayload {
     pub app: String,               // ping++ 的商户系统的 appid
     pub receipt_app: String,       // 上面 appid 对应 app 里的子商户 id
@@ -18,7 +18,7 @@ pub struct CreateOrderRequestPayload {
     pub time_expire: i32,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct OrderResponsePayload {
     pub id: String,
     pub object: String,

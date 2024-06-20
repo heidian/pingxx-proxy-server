@@ -43,7 +43,11 @@ impl ChannelHandler for AlipayWap {
         let config = &self.config;
         let return_url = match charge_req_payload.extra.success_url.as_ref() {
             Some(url) => url.to_string(),
-            None => "".to_string(),
+            None => {
+                return Err(ChargeError::MalformedRequest(
+                    "missing success_url in charge extra".to_string(),
+                ))
+            },
         };
         let res_json = match config.alipay_version {
             AlipayApiType::MAPI => {
