@@ -16,7 +16,7 @@ mod config {
 
 mod error {
     use thiserror::Error;
-    use crate::charges::ChargeError;
+    use crate::core::ChargeError;
 
     #[derive(Error, Debug)]
     pub enum WeixinError {

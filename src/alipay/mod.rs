@@ -76,7 +76,7 @@ mod config {
 }
 
 mod error {
-    use crate::charges::ChargeError;
+    use crate::core::ChargeError;
     use thiserror::Error;
 
     #[derive(Error, Debug)]
