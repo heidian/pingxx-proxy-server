@@ -14,18 +14,10 @@ async fn send_webhook(
     let mut event_data = serde_json::to_value(order_response).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);
     })?;
-    let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-        tracing::error!("error parsing charge channel: {:?}", e);
-    })?;
-    let charge_response = ChargeResponsePayload {
-        id: charge.id.clone(),
-        object: "charge".to_string(),
-        channel,
-        amount: charge.amount,
-        extra: charge.extra.clone(),
-        credential: charge.credential.clone(),
-    };
-    event_data["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
+
+    event_data["charge_essentials"] = ChargeResponsePayload::new(&charge).map_err(|e| {
+        tracing::error!("{:?}", e);
+    })?.to_json().map_err(|e| {
         tracing::error!("error serializing charge essentials: {:?}", e);
     })?;
 

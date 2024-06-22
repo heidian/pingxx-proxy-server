@@ -1,5 +1,6 @@
 use super::order::OrderResponsePayload;
 use crate::core::{ChannelHandler, ChargeError, ChargeExtra, PaymentChannel};
+use crate::prisma::charge;
 use crate::{alipay, weixin};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,6 +21,29 @@ pub struct ChargeResponsePayload {
     pub amount: i32,
     pub extra: serde_json::Value,
     pub credential: serde_json::Value,
+}
+
+impl ChargeResponsePayload {
+    pub fn new(charge: &charge::Data) -> Result<Self, ChargeError> {
+        let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
+            ChargeError::InternalError(format!("error parsing charge channel: {:?}", e))
+        })?;
+        Ok(Self {
+            id: charge.id.clone(),
+            object: "charge".to_string(),
+            channel,
+            amount: charge.amount,
+            extra: charge.extra.clone(),
+            credential: charge.credential.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Result<serde_json::Value, ChargeError> {
+        let value = serde_json::to_value(self).map_err(|e| {
+            ChargeError::InternalError(format!("error serializing charge: {:?}", e))
+        })?;
+        Ok(value)
+    }
 }
 
 pub async fn create_charge(
@@ -88,20 +112,7 @@ pub async fn create_charge(
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;
 
-    let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-        ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))
-    })?;
-    let charge_response = ChargeResponsePayload {
-        id: charge.id,
-        object: "charge".to_string(),
-        channel,
-        amount: charge.amount,
-        extra: charge.extra,
-        credential: charge.credential,
-    };
-    result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
-        ChargeError::InternalError(format!("error serializing charge essentials: {:?}", e))
-    })?;
+    result["charge_essentials"] = ChargeResponsePayload::new(&charge)?.to_json()?;
 
     Ok(result)
 }

@@ -1,8 +1,7 @@
 use super::charge::ChargeResponsePayload;
-use crate::core::{OrderError, PaymentChannel};
+use crate::core::OrderError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::str::FromStr;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateOrderRequestPayload {
@@ -42,6 +41,7 @@ pub struct OrderResponsePayload {
     pub time_paid: Option<i32>,
     pub time_expire: i32,
     pub metadata: serde_json::Value,
+    pub charges: serde_json::Value,
 }
 
 impl OrderResponsePayload {
@@ -50,6 +50,25 @@ impl OrderResponsePayload {
         app: &crate::prisma::app::Data,
         sub_app: &crate::prisma::sub_app::Data,
     ) -> Self {
+        let charges = {
+            let empty: Vec<crate::prisma::charge::Data> = vec![];
+            let charges = order.charges.as_ref().unwrap_or(&empty);
+            let data = charges
+                .iter()
+                .filter_map(|charge| {
+                    match ChargeResponsePayload::new(charge) {
+                        Ok(res) => res.to_json().ok(),
+                        Err(_) => None
+                    }
+                })
+                .collect::<Vec<serde_json::Value>>();
+            json!({
+                "object": "list",
+                "url": "/v1/charges",
+                "has_more": false,
+                "data": data
+            })
+        };
         Self {
             id: order.id.clone(),
             object: String::from("order"),
@@ -72,6 +91,7 @@ impl OrderResponsePayload {
             time_paid: None,
             time_expire: order.time_expire,
             metadata: order.metadata.clone(),
+            charges,
         }
     }
 }
@@ -125,18 +145,9 @@ pub async fn retrieve_order(
     })?;
     let charge = order.charges.unwrap_or_default().first().cloned();
     if let Some(charge) = charge {
-        let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-            OrderError::Unexpected(format!("error parsing charge channel: {:?}", e))
-        })?;
-        let charge_response = ChargeResponsePayload {
-            id: charge.id,
-            object: "charge".to_string(),
-            channel,
-            amount: charge.amount,
-            extra: charge.extra,
-            credential: charge.credential,
-        };
-        result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
+        result["charge_essentials"] = ChargeResponsePayload::new(&charge).map_err(|e| {
+            OrderError::Unexpected(format!("{:?}", e))
+        })?.to_json().map_err(|e| {
             OrderError::Unexpected(format!("error serializing charge essentials: {:?}", e))
         })?;
     }

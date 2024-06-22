@@ -26,3 +26,11 @@ Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业�
 2. 启动 shopbackend 和 shopbackend django admin
 3. 启动 shopfront 以前端发起支付
 4. 启动 pingxx-proxy-server
+
+## 启动 pingxx-proxy-server
+
+日志用了 tracing 库，需要设置环境变量 RUST_LOG，比如
+
+```bash
+RUST_LOG=pingxx_proxy_server=debug cargo watch -x "run"
+```
