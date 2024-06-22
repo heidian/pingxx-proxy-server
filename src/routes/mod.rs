@@ -1,7 +1,8 @@
-mod prelude;
 mod charge;
 mod notify;
 mod order;
+mod prelude;
+mod refund;
 use axum::{
     extract::{Path, Query},
     http::{HeaderMap, StatusCode},
@@ -12,6 +13,7 @@ use axum::{
 use charge::{create_charge, CreateChargeRequestPayload};
 use notify::{create_charge_notify, retry_charge_notify};
 use order::{create_order, retrieve_order, CreateOrderRequestPayload};
+use refund::{create_refund, CreateRefundRequestPayload};
 
 async fn test() -> &'static str {
     "test"
@@ -85,6 +87,24 @@ pub async fn get_routes() -> Router {
                         (StatusCode::BAD_REQUEST, err_msg).into_response()
                     })?;
                 match create_charge(&prisma_client, order_id, charge_req_payload).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
+            })
+        })
+        .route("/v1/orders/:order_id/order_refunds", {
+            let prisma_client = prisma_client.clone();
+            post(|
+                Path(order_id): Path<String>,
+                body: String,
+            | async move {
+                tracing::info!(order_id, body, "create_refund");
+                let refund_req_payload: CreateRefundRequestPayload =
+                    serde_json::from_str(&body).map_err(|e| {
+                        let err_msg = format!("error parsing create_refund request payload: {:?}", e);
+                        (StatusCode::BAD_REQUEST, err_msg).into_response()
+                    })?;
+                match create_refund(&prisma_client, order_id, refund_req_payload).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }

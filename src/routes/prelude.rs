@@ -1,5 +1,5 @@
 use crate::utils::DBError;
-use crate::core::{OrderError, ChargeError};
+use crate::core::{OrderError, ChargeError, RefundError};
 
 impl From<DBError> for OrderError {
     fn from(e: DBError) -> Self {
@@ -15,6 +15,15 @@ impl From<DBError> for ChargeError {
         match e {
             DBError::SQLFailed(msg) => ChargeError::InternalError(msg),
             DBError::DoesNotExist(msg) => ChargeError::MalformedRequest(msg),
+        }
+    }
+}
+
+impl From<DBError> for RefundError {
+    fn from(e: DBError) -> Self {
+        match e {
+            DBError::SQLFailed(msg) => RefundError::Unexpected(msg),
+            DBError::DoesNotExist(msg) => RefundError::BadRequest(msg),
         }
     }
 }

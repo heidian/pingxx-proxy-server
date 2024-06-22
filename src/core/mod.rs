@@ -6,6 +6,25 @@ mod error {
     use thiserror::Error;
 
     #[derive(Error, Debug)]
+    pub enum OrderError {
+        #[error("[Bad Order Request Payload] {0}")]
+        BadRequest(String),
+        #[error("[Unexpected Order Request Error] {0}")]
+        Unexpected(String),
+    }
+
+    impl IntoResponse for OrderError {
+        fn into_response(self) -> Response {
+            tracing::error!("{:?}", self);
+            let (status_code, err_msg) = match self {
+                OrderError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+                OrderError::Unexpected(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            };
+            (status_code, err_msg).into_response()
+        }
+    }
+
+    #[derive(Error, Debug)]
     pub enum ChargeError {
         #[error("[Malformed Charge Request] {0}")]
         MalformedRequest(String),
@@ -25,19 +44,19 @@ mod error {
     }
 
     #[derive(Error, Debug)]
-    pub enum OrderError {
-        #[error("[Bad Order Request Payload] {0}")]
+    pub enum RefundError {
+        #[error("[Bad Refund Request Payload] {0}")]
         BadRequest(String),
-        #[error("[Unexpected Order Request Error] {0}")]
+        #[error("[Unexpected Refund Request Error] {0}")]
         Unexpected(String),
     }
 
-    impl IntoResponse for OrderError {
+    impl IntoResponse for RefundError {
         fn into_response(self) -> Response {
             tracing::error!("{:?}", self);
             let (status_code, err_msg) = match self {
-                OrderError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-                OrderError::Unexpected(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+                RefundError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+                RefundError::Unexpected(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             };
             (status_code, err_msg).into_response()
         }
