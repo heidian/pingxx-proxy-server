@@ -62,12 +62,12 @@ pub struct OpenApiRequestPayload {
     pub format: String,
     pub charset: String,
     pub sign_type: String,
+    pub sign: String,
     pub timestamp: String,
     pub version: String,
     pub biz_content: String,
     pub notify_url: String,
     pub return_url: String,
-    pub sign: String,
     pub channel_url: String,
 }
 
@@ -75,7 +75,7 @@ impl OpenApiRequestPayload {
     pub fn new(
         charge_id: &str,         //
         method: &str,            // alipay.trade.page.pay | alipay.trade.wap.pay
-        alipay_app_id: &str,     // 开放平台 ID, 引用 ID
+        alipay_app_id: &str,     // 开放平台 ID, 应用 ID
         alipay_pid: &str,        // 合作者身份 ID, 商家唯一 ID
         return_url: &str,        // 支付成功跳转
         merchant_order_no: &str, // 商户订单号
@@ -112,12 +112,12 @@ impl OpenApiRequestPayload {
             format: String::from("JSON"),
             charset: String::from("utf-8"),
             sign_type: String::from("RSA2"),
+            sign: String::from(""),
             timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             version: String::from("1.0"),
             biz_content: biz_content.to_string(),
             return_url: return_url.to_string(),
             notify_url: crate::utils::notify_url(charge_id),
-            sign: String::from(""),
             channel_url: String::from("https://openapi.alipay.com/gateway.do"),
         };
         Ok(payload)
@@ -204,5 +204,94 @@ impl OpenApiNotifyPayload {
             return Err(AlipayError::ApiError("wrong rsa2 signature".into()));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct OpenApiRefundPayload {
+    pub app_id: String,
+    pub method: String,
+    pub format: String,
+    pub charset: String,
+    pub sign_type: String,
+    pub sign: String,
+    pub timestamp: String,
+    pub version: String,
+    pub biz_content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OpenApiRefundResponse {
+    pub code: String,
+    pub msg: String,
+    pub buyer_logon_id: String,
+    pub buyer_user_id: Option<String>,
+    // pub fund_change: String,
+    // pub gmt_refund_pay: String,
+    pub out_trade_no: String,
+    pub refund_fee: String,    // 对应支付累计已退款的总金额
+    pub send_back_fee: String, // 本次商户实际退回金额
+    pub trade_no: String,      // 支付宝交易号
+}
+
+impl OpenApiRefundPayload {
+    pub fn new(
+        alipay_app_id: &str,     // 开放平台 ID, 应用 ID
+        merchant_order_no: &str, // 商户订单号
+        refund_amount: i32,      // 退款金额, 精确到分
+        description: &str,       // 退款说明
+    ) -> Result<Self, AlipayError> {
+        let refund_amount = format!("{:.2}", refund_amount as f64 / 100.0);
+        let biz_content = json!({
+            "refund_amount": refund_amount,     // 退款金额，单位为元，支持两位小数
+            "out_trade_no": merchant_order_no,  // 支付时的商户订单号
+            "refund_reason": description,       // 退款说明
+        });
+        Ok(Self {
+            app_id: alipay_app_id.to_string(),
+            method: String::from("alipay.trade.refund"),
+            format: String::from("JSON"),
+            charset: String::from("utf-8"),
+            sign_type: String::from("RSA2"),
+            sign: String::from(""),
+            timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            version: String::from("1.0"),
+            biz_content: biz_content.to_string(),
+        })
+    }
+
+    pub fn sign_rsa2(&mut self, private_key: &str) -> Result<String, AlipayError> {
+        // 这里 deserialize 不会出问题
+        let v = serde_json::to_value(&self).unwrap();
+        let mut m: HashMap<String, String> = serde_json::from_value(v).unwrap();
+        m.remove("sign");
+        // m.remove("timestamp");
+        // m.remove("version");
+        let signature = openapi_rsa2::sign(&m, private_key)?;
+        self.sign = signature.clone();
+        Ok(signature)
+    }
+
+    pub async fn send_request(&self) -> Result<OpenApiRefundResponse, AlipayError> {
+        let res = reqwest::Client::new()
+            .post("https://openapi.alipay.com/gateway.do")
+            // .form(&self)  // 使用 x-www-form-urlencoded
+            .query(&self) // 参数放在 url 中
+            .send()
+            .await
+            .map_err(|e| AlipayError::ApiError(format!("error request alipay openapi: {}", e)))?;
+        let res_text = res.text().await.map_err(|e| {
+            AlipayError::ApiError(format!("error read alipay openapi response: {}", e))
+        })?;
+        tracing::debug!("alipay openapi response: {:?}", res_text);
+        let res_json = serde_json::to_value(&res_text).map_err(|e| {
+            AlipayError::ApiError(format!("error deserialize alipay openapi response: {}", e))
+        })?;
+        let alipay_trade_refund_response = res_json["alipay_trade_refund_response"].clone();
+        let refund_response: OpenApiRefundResponse = serde_json::from_value(alipay_trade_refund_response).map_err(
+            |e| AlipayError::ApiError(format!("error deserialize OpenApiRefundResponse: {}", e)),
+        )?;
+
+        Ok(refund_response)
     }
 }

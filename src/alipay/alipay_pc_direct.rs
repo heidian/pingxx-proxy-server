@@ -1,6 +1,6 @@
 use super::{
     mapi::{MapiNotifyPayload, MapiRequestPayload},
-    openapi::{OpenApiNotifyPayload, OpenApiRequestPayload},
+    openapi::{OpenApiNotifyPayload, OpenApiRequestPayload, OpenApiRefundPayload},
     AlipayApiType, AlipayError, AlipayPcDirectConfig,
 };
 use crate::core::{
@@ -118,11 +118,28 @@ impl ChannelHandler for AlipayPcDirect {
 
     async fn create_refund(
         &self,
-        _order: &crate::prisma::order::Data,
+        order: &crate::prisma::order::Data,
         _charge: &crate::prisma::charge::Data,
-        _refund_amount: i32,
-        _payload: &RefundExtra,
+        refund_amount: i32,
+        payload: &RefundExtra,
     ) -> Result<serde_json::Value, RefundError> {
+        let config = &self.config;
+        let _result = match config.alipay_version {
+            AlipayApiType::MAPI => {
+                false
+            }
+            AlipayApiType::OPENAPI => {
+                let mut refund_payload = OpenApiRefundPayload::new(
+                    &config.alipay_app_id,
+                    &order.merchant_order_no,
+                    refund_amount,
+                    &payload.description,
+                )?;
+                refund_payload.sign_rsa2(&config.alipay_private_key_rsa2)?;
+                refund_payload.send_request().await?;
+                true
+            }
+        };
         Ok(serde_json::Value::Null)
     }
 }

@@ -153,7 +153,7 @@ impl V2ApiRequestPayload {
             .await
             .map_err(|e| WeixinError::ApiError(format!("error request unifiedorder api: {}", e)))?;
         let res_text = res.text().await.map_err(|e| {
-            WeixinError::ApiError(format!("error parse unifiedorder response: {}", e))
+            WeixinError::ApiError(format!("error read unifiedorder response: {}", e))
         })?;
         tracing::debug!("unifiedorder response: {:?}", res_text);
 
