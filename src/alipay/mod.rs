@@ -76,7 +76,7 @@ mod config {
 }
 
 mod error {
-    use crate::core::ChargeError;
+    use crate::core::{ChargeError, RefundError};
     use thiserror::Error;
 
     #[derive(Error, Debug)]
@@ -111,6 +111,18 @@ mod error {
                 AlipayError::ApiError(e) => ChargeError::InternalError(e),
                 AlipayError::InvalidConfig(e) => ChargeError::InternalError(e),
                 AlipayError::Unexpected(e) => ChargeError::InternalError(e),
+            }
+        }
+    }
+
+    impl From<AlipayError> for RefundError {
+        fn from(e: AlipayError) -> RefundError {
+            tracing::error!("{:?}", e);
+            match e {
+                AlipayError::MalformedRequest(e) => RefundError::BadRequest(e),
+                AlipayError::ApiError(e) => RefundError::Unexpected(e),
+                AlipayError::InvalidConfig(e) => RefundError::Unexpected(e),
+                AlipayError::Unexpected(e) => RefundError::Unexpected(e),
             }
         }
     }

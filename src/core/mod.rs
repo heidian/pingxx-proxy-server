@@ -96,7 +96,7 @@ mod channel {
 }
 
 mod request {
-    use super::error::ChargeError;
+    use super::error::{ChargeError, RefundError};
     use async_trait::async_trait;
     use serde::{Deserialize, Serialize};
 
@@ -111,6 +111,14 @@ mod request {
         ) -> Result<serde_json::Value, ChargeError>;
 
         fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
+
+        async fn create_refund(
+            &self,
+            order: &crate::prisma::order::Data,
+            charge: &crate::prisma::charge::Data,
+            refund_amount: i32,
+            payload: &RefundExtra,
+        ) -> Result<serde_json::Value, RefundError>;
     }
 
     #[derive(Debug, PartialEq)]
@@ -127,6 +135,13 @@ mod request {
         pub cancel_url: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub open_id: Option<String>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug)]
+    pub struct RefundExtra {
+        pub description: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub funding_source: Option<String>, // 微信退款专用 unsettled_funds | recharge_funds
     }
 }
 

@@ -3,7 +3,10 @@ use super::{
     openapi::{OpenApiNotifyPayload, OpenApiRequestPayload},
     AlipayApiType, AlipayError, AlipayPcDirectConfig,
 };
-use crate::core::{ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel};
+use crate::core::{
+    ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
+    RefundExtra,
+};
 use async_trait::async_trait;
 
 pub struct AlipayPcDirect {
@@ -111,5 +114,15 @@ impl ChannelHandler for AlipayPcDirect {
         } else {
             Ok(ChargeStatus::Fail)
         }
+    }
+
+    async fn create_refund(
+        &self,
+        _order: &crate::prisma::order::Data,
+        _charge: &crate::prisma::charge::Data,
+        _refund_amount: i32,
+        _payload: &RefundExtra,
+    ) -> Result<serde_json::Value, RefundError> {
+        Ok(serde_json::Value::Null)
     }
 }

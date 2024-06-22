@@ -15,8 +15,8 @@ mod config {
 }
 
 mod error {
+    use crate::core::{ChargeError, RefundError};
     use thiserror::Error;
-    use crate::core::ChargeError;
 
     #[derive(Error, Debug)]
     pub enum WeixinError {
@@ -41,8 +41,20 @@ mod error {
             }
         }
     }
+
+    impl From<WeixinError> for RefundError {
+        fn from(e: WeixinError) -> RefundError {
+            tracing::error!("{:?}", e);
+            match e {
+                WeixinError::MalformedRequest(e) => RefundError::BadRequest(e),
+                WeixinError::ApiError(e) => RefundError::Unexpected(e),
+                WeixinError::InvalidConfig(e) => RefundError::Unexpected(e),
+                WeixinError::Unexpected(e) => RefundError::Unexpected(e),
+            }
+        }
+    }
 }
 
-use error::*;
 use config::*;
+use error::*;
 pub use wx_pub::WxPub;

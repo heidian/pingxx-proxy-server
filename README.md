@@ -5,20 +5,23 @@ Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业�
 完全替代不大可能，Ping++ 依然是目前接触到的接入最全的支付网关，主要实现：
 
 第一优先级
-- 支付宝 openapi 和 mapi 两种接口格式和 rsa/rsa256 两种签名方式
-- 微信公众号和小程序
-- 退款
+
+-   支付宝 openapi 和 mapi 两种接口格式和 rsa/rsa256 两种签名方式
+-   微信公众号和小程序
+-   退款
 
 第二优先级
-- 支付宝微信代扣
-- 当面付，App支付（比较难测试）
-- 境外支付宝微信
-- PayPal
-- 查账接口
+
+-   支付宝微信代扣
+-   当面付，App 支付（比较难测试）
+-   境外支付宝微信
+-   PayPal
+-   查账接口
 
 第三阶段
-- Dashboard
-- 分叉，不再兼容
+
+-   Dashboard
+-   分叉，不再兼容
 
 ## 调试方式
 
@@ -33,4 +36,52 @@ Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业�
 
 ```bash
 RUST_LOG=pingxx_proxy_server=debug cargo watch -x "run"
+```
+
+## 数据结构
+
+**Credential**
+
+前端需要的参数，用于客户端打开支付控件、支付页面、显示二维码等。
+
+```js
+{
+    object: "credential",
+    alipay_pc_direct: {
+        // alipay_pc_direct 所需的参数
+    },
+    wx_pub: {
+        // wx_pub 所需的参数
+    },
+}
+```
+
+**Charge**
+
+```js
+{
+    id,
+    object: "charge",
+    channel,  // 支付渠道
+    credential,  // Credential 对象
+}
+```
+
+**Order**
+
+```js
+{
+    id,
+    object: "order",
+    charge_essentials: {
+        // 最近一次请求的支付所需的支付要素，是 Charge 上的部分数据，但不是完整的 Charge 对象
+        channel,
+        credential,  // Credential 对象
+    },
+    charges: {
+        data: [
+            // Charge 列表, 和前面 Charge 结构完全一样
+        ]
+    },
+}
 ```
