@@ -56,6 +56,7 @@ pub async fn create_refund(
     let refund_result = handler
         .create_refund(
             &order,
+            &charge,
             &refund_id,
             refund_req_payload.refund_amount,
             &refund_extra,

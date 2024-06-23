@@ -13,9 +13,9 @@ pub fn notify_url(charge_id: &str) -> String {
     // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
 }
 
-pub fn refund_notify_url(refund_id: &str) -> String {
+pub fn refund_notify_url(charge_id: &str, refund_id: &str) -> String {
     let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
-    format!("{}/notify/refunds/{}", charge_notify_origin, refund_id)
+    format!("{}/notify/charges/{}/refunds/{}", charge_notify_origin, charge_id, refund_id)
 }
 
 mod db {
