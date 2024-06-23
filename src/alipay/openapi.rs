@@ -220,19 +220,19 @@ pub struct OpenApiRefundPayload {
     pub biz_content: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct OpenApiRefundResponse {
-    pub code: String,
-    pub msg: String,
-    pub buyer_logon_id: String,
-    pub buyer_user_id: Option<String>,
-    // pub fund_change: String,
-    // pub gmt_refund_pay: String,
-    pub out_trade_no: String,
-    pub refund_fee: String,    // 对应支付累计已退款的总金额
-    pub send_back_fee: String, // 本次商户实际退回金额
-    pub trade_no: String,      // 支付宝交易号
-}
+// #[derive(Debug, Deserialize)]
+// pub struct OpenApiRefundResponse {
+//     pub code: String,
+//     pub msg: String,
+//     pub buyer_logon_id: Option<String>,
+//     pub buyer_user_id: Option<String>,
+//     pub fund_change: Option<String>,
+//     pub gmt_refund_pay: Option<String>,
+//     pub out_trade_no: Option<String>,
+//     pub refund_fee: Option<String>,    // 对应支付累计已退款的总金额
+//     pub send_back_fee: Option<String>, // 本次商户实际退回金额
+//     pub trade_no: Option<String>,      // 支付宝交易号
+// }
 
 impl OpenApiRefundPayload {
     pub fn new(
@@ -272,7 +272,21 @@ impl OpenApiRefundPayload {
         Ok(signature)
     }
 
-    pub async fn send_request(&self) -> Result<OpenApiRefundResponse, AlipayError> {
+    /**
+     * 退款成功判断说明：接口返回fund_change=Y为退款成功，fund_change=N或无此字段值返回时需通过退款查询接口进一步确认退款状态。
+     * 注意，接口中code=10000，仅代表本次退款请求成功，不代表退款成功。
+     * code
+     * msg
+     * buyer_logon_id
+     * buyer_user_id
+     * fund_change
+     * gmt_refund_pay
+     * out_trade_no
+     * refund_fee      // 对应支付累计已退款的总金额
+     * send_back_fee   // 本次商户实际退回金额
+     * trade_no        // 支付宝交易号
+     */
+    pub async fn send_request(&self) -> Result<serde_json::Value, AlipayError> {
         let res = reqwest::Client::new()
             .post("https://openapi.alipay.com/gateway.do")
             // .form(&self)  // 使用 x-www-form-urlencoded
@@ -284,14 +298,16 @@ impl OpenApiRefundPayload {
             AlipayError::ApiError(format!("error read alipay openapi response: {}", e))
         })?;
         tracing::debug!("alipay openapi response: {:?}", res_text);
-        let res_json = serde_json::to_value(&res_text).map_err(|e| {
+        // 这里不能用 to_value (str 会变成 serde_json::Value::String), 要用 from_str (把 str 转化成 json)
+        let res_json: serde_json::Value = serde_json::from_str(&res_text).map_err(|e| {
             AlipayError::ApiError(format!("error deserialize alipay openapi response: {}", e))
         })?;
         let alipay_trade_refund_response = res_json["alipay_trade_refund_response"].clone();
-        let refund_response: OpenApiRefundResponse = serde_json::from_value(alipay_trade_refund_response).map_err(
-            |e| AlipayError::ApiError(format!("error deserialize OpenApiRefundResponse: {}", e)),
-        )?;
-
-        Ok(refund_response)
+        // let refund_response: OpenApiRefundResponse =
+        //     serde_json::from_value(alipay_trade_refund_response).map_err(|e| {
+        //         AlipayError::ApiError(format!("error deserialize OpenApiRefundResponse: {}", e))
+        //     })?;
+        // Ok(refund_response)
+        Ok(alipay_trade_refund_response)
     }
 }

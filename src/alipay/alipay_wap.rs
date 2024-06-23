@@ -5,7 +5,7 @@ use super::{
 };
 use crate::core::{
     ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
-    RefundExtra,
+    RefundExtra, RefundResult,
 };
 use async_trait::async_trait;
 
@@ -122,7 +122,7 @@ impl ChannelHandler for AlipayWap {
         _charge: &crate::prisma::charge::Data,
         _refund_amount: i32,
         _payload: &RefundExtra,
-    ) -> Result<serde_json::Value, RefundError> {
-        Ok(serde_json::Value::Null)
+    ) -> Result<RefundResult, RefundError> {
+        Err(RefundError::Unexpected("not implemented".to_string()))
     }
 }

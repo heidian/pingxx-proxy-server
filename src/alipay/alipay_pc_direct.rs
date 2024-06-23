@@ -1,11 +1,11 @@
 use super::{
     mapi::{MapiNotifyPayload, MapiRequestPayload},
-    openapi::{OpenApiNotifyPayload, OpenApiRequestPayload, OpenApiRefundPayload},
+    openapi::{OpenApiNotifyPayload, OpenApiRefundPayload, OpenApiRequestPayload},
     AlipayApiType, AlipayError, AlipayPcDirectConfig,
 };
 use crate::core::{
     ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
-    RefundExtra,
+    RefundExtra, RefundStatus, RefundResult,
 };
 use async_trait::async_trait;
 
@@ -122,12 +122,14 @@ impl ChannelHandler for AlipayPcDirect {
         _charge: &crate::prisma::charge::Data,
         refund_amount: i32,
         payload: &RefundExtra,
-    ) -> Result<serde_json::Value, RefundError> {
+    ) -> Result<RefundResult, RefundError> {
         let config = &self.config;
-        let _result = match config.alipay_version {
+        let result = match config.alipay_version {
             AlipayApiType::MAPI => {
-                false
-            }
+                RefundResult {
+                    ..Default::default()
+                }
+            },
             AlipayApiType::OPENAPI => {
                 let mut refund_payload = OpenApiRefundPayload::new(
                     &config.alipay_app_id,
@@ -136,10 +138,30 @@ impl ChannelHandler for AlipayPcDirect {
                     &payload.description,
                 )?;
                 refund_payload.sign_rsa2(&config.alipay_private_key_rsa2)?;
-                refund_payload.send_request().await?;
-                true
+                let refund_response = refund_payload.send_request().await?;
+                let mut result = RefundResult {
+                    amount: refund_amount,
+                    description: payload.description.clone(),
+                    extra: refund_response.clone(),
+                    ..Default::default()
+                };
+                if refund_response["code"].as_str() == Some("10000") {
+                    if refund_response["fund_change"].as_str() == Some("Y") {
+                        result.status = RefundStatus::Success;
+                    } else {
+                        result.status = RefundStatus::Fail;
+                    }
+                } else {
+                    result.status = RefundStatus::Fail;
+                    result.failure_msg = match refund_response["msg"].as_str() {
+                        Some(msg) => Some(msg.to_string()),
+                        None => None,
+                    };
+                }
+                result
             }
         };
-        Ok(serde_json::Value::Null)
+        Ok(result)
+        // Err(RefundError::Unexpected("not implemented".to_string()))
     }
 }
