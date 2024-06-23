@@ -1,10 +1,10 @@
 use super::{
-    v2api::{self, V2ApiNotifyPayload, V2ApiRequestPayload},
+    v2api::{self, V2ApiNotifyPayload, V2ApiRefundPayload, V2ApiRequestPayload},
     WeixinError, WxPubConfig,
 };
 use crate::core::{
     ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
-    RefundExtra, RefundResult,
+    RefundExtra, RefundResult, RefundStatus,
 };
 use async_trait::async_trait;
 use serde_json::json;
@@ -98,13 +98,44 @@ impl ChannelHandler for WxPub {
 
     async fn create_refund(
         &self,
-        _order: &crate::prisma::order::Data,
-        _charge: &crate::prisma::charge::Data,
-        _refund_id: &str,
-        _refund_amount: i32,
-        _payload: &RefundExtra,
+        order: &crate::prisma::order::Data,
+        charge: &crate::prisma::charge::Data,
+        refund_id: &str,
+        refund_amount: i32,
+        payload: &RefundExtra,
     ) -> Result<RefundResult, RefundError> {
-        Err(RefundError::Unexpected("not implemented".to_string()))
+        let config = &self.config;
+        let mut refund_payload = V2ApiRefundPayload::new(
+            refund_id,
+            &charge.id,
+            &config.wx_pub_app_id,
+            &config.wx_pub_mch_id,
+            &order.merchant_order_no,
+            charge.amount,
+            refund_amount,
+            &payload.description,
+        )?;
+        refund_payload.sign_md5(&config.wx_pub_key)?;
+        let refund_response = refund_payload.send_request(
+            &config.wx_pub_client_cert,
+            &config.wx_pub_client_key,
+        ).await?;
+        let mut result = RefundResult {
+            amount: refund_amount,
+            description: payload.description.clone(),
+            extra: refund_response.clone(),
+            ..Default::default()
+        };
+        if refund_response["result_code"].as_str() == Some("10000") {
+            result.status = RefundStatus::Success;
+        } else {
+            result.status = RefundStatus::Fail;
+            result.failure_msg = match refund_response["err_code_des"].as_str() {
+                Some(msg) => Some(msg.to_string()),
+                None => None,
+            };
+        }
+        Ok(result)
     }
 }
 

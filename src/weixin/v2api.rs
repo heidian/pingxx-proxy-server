@@ -38,6 +38,51 @@ pub mod v2api_md5 {
         let sign = format!("{:x}", sign).to_uppercase();
         sign == *signature
     }
+
+    pub fn generate_nonce_str() -> String {
+        (0..32)
+            .map(|_| {
+                let idx = rand::random::<usize>() % 62;
+                if idx < 10 {
+                    (idx as u8 + 48) as char
+                } else if idx < 36 {
+                    (idx as u8 + 55) as char
+                } else {
+                    (idx as u8 + 61) as char
+                }
+            })
+            .collect::<String>()
+    }
+}
+
+fn xml_to_map(payload: &str) -> Result<HashMap<String, String>, WeixinError> {
+    let mut m = HashMap::<String, String>::new();
+    let mut parser = quick_xml::Reader::from_str(payload);
+    parser.config_mut().trim_text(true);
+    let _ = parser.read_event(); // Skip root element
+    loop {
+        match parser.read_event() {
+            Ok(quick_xml::events::Event::Start(ref e)) => {
+                let key = String::from_utf8(e.name().0.to_vec()).unwrap();
+                // let value = parser.read_text(e.name()).unwrap();
+                // m.insert(key, value.as_ref().to_owned());
+                let value = match parser.read_event() {
+                    Ok(quick_xml::events::Event::CData(cdata)) => {
+                        String::from_utf8(cdata.to_vec()).unwrap()
+                    }
+                    Ok(quick_xml::events::Event::Text(text)) => {
+                        text.unescape().unwrap().to_string()
+                    }
+                    _ => String::new(),
+                };
+                m.insert(key, value);
+            }
+            Ok(quick_xml::events::Event::Eof) => break,
+            Err(e) => return Err(WeixinError::ApiError(format!("error parsing xml {}", e))),
+            _ => {}
+        }
+    }
+    Ok(m)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,18 +141,7 @@ impl V2ApiRequestPayload {
             .to_string();
         let total_fee = format!("{}", charge_amount);
         // create 32 charactors nonce string
-        let nonce_str = (0..32)
-            .map(|_| {
-                let idx = rand::random::<usize>() % 62;
-                if idx < 10 {
-                    (idx as u8 + 48) as char
-                } else if idx < 36 {
-                    (idx as u8 + 55) as char
-                } else {
-                    (idx as u8 + 61) as char
-                }
-            })
-            .collect::<String>();
+        let nonce_str = v2api_md5::generate_nonce_str();
         let payload = V2ApiRequestPayload {
             appid: wx_pub_app_id.to_string(),
             mch_id: wx_pub_mch_id.to_string(),
@@ -132,7 +166,8 @@ impl V2ApiRequestPayload {
     pub fn sign_md5(&mut self, sign_key: &str) -> Result<String, WeixinError> {
         // 这里 deserialize 不会出问题
         let v = serde_json::to_value(&self).unwrap();
-        let m: HashMap<String, String> = serde_json::from_value(v.to_owned()).unwrap();
+        let mut m: HashMap<String, String> = serde_json::from_value(v.to_owned()).unwrap();
+        m.remove("sign");
         let signature = v2api_md5::sign(&m, sign_key);
         self.sign = signature.clone();
         Ok(signature)
@@ -187,32 +222,7 @@ pub struct V2ApiNotifyPayload {
 
 impl V2ApiNotifyPayload {
     pub fn new(payload: &str) -> Result<Self, WeixinError> {
-        let mut m = HashMap::<String, String>::new();
-        let mut parser = quick_xml::Reader::from_str(payload);
-        parser.config_mut().trim_text(true);
-        let _ = parser.read_event(); // Skip root element
-        loop {
-            match parser.read_event() {
-                Ok(quick_xml::events::Event::Start(ref e)) => {
-                    let key = String::from_utf8(e.name().0.to_vec()).unwrap();
-                    // let value = parser.read_text(e.name()).unwrap();
-                    // m.insert(key, value.as_ref().to_owned());
-                    let value = match parser.read_event() {
-                        Ok(quick_xml::events::Event::CData(cdata)) => {
-                            String::from_utf8(cdata.to_vec()).unwrap()
-                        }
-                        Ok(quick_xml::events::Event::Text(text)) => {
-                            text.unescape().unwrap().to_string()
-                        }
-                        _ => String::new(),
-                    };
-                    m.insert(key, value);
-                }
-                Ok(quick_xml::events::Event::Eof) => break,
-                Err(e) => return Err(WeixinError::ApiError(format!("error parsing xml {}", e))),
-                _ => {}
-            }
-        }
+        let m = xml_to_map(payload)?;
 
         if m.get("return_code") != Some(&"SUCCESS".to_string()) {
             return Err(WeixinError::ApiError("return_code not SUCCESS".into()));
@@ -250,5 +260,109 @@ impl V2ApiNotifyPayload {
             return Err(WeixinError::ApiError("wrong md5 signature".into()));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct V2ApiRefundPayload {
+    pub appid: String,
+    pub mch_id: String,
+    pub nonce_str: String,
+    pub sign: String,
+    // pub sign_type: String,
+    pub out_trade_no: String,
+    pub out_refund_no: String,
+    pub total_fee: String,
+    pub refund_fee: String,
+    pub notify_url: String,
+}
+
+impl V2ApiRefundPayload {
+    pub fn new(
+        refund_id: &str,
+        charge_id: &str, //
+        wx_pub_app_id: &str,
+        wx_pub_mch_id: &str,
+        merchant_order_no: &str,
+        charge_amount: i32,
+        refund_amount: i32,
+        _description: &str,
+    ) -> Result<Self, WeixinError> {
+        let nonce_str = v2api_md5::generate_nonce_str();
+        Ok(Self {
+            appid: wx_pub_app_id.to_string(),
+            mch_id: wx_pub_mch_id.to_string(),
+            nonce_str,
+            sign: String::from(""),
+            // sign_type: "MD5",
+            out_trade_no: merchant_order_no.to_string(),
+            out_refund_no: refund_id.to_string(),
+            total_fee: charge_amount.to_string(),
+            refund_fee: refund_amount.to_string(),
+            notify_url: crate::utils::refund_notify_url(charge_id, refund_id),
+        })
+    }
+
+    pub fn sign_md5(&mut self, sign_key: &str) -> Result<String, WeixinError> {
+        // 这里 deserialize 不会出问题
+        let v = serde_json::to_value(&self).unwrap();
+        let mut m: HashMap<String, String> = serde_json::from_value(v.to_owned()).unwrap();
+        m.remove("sign");
+        let signature = v2api_md5::sign(&m, sign_key);
+        self.sign = signature.clone();
+        Ok(signature)
+    }
+
+    /**
+     * https://pay.weixin.qq.com/wiki/doc/api/jsapi.php?chapter=9_4
+     */
+    pub async fn send_request(
+        &self,
+        client_cert: &str,
+        client_key: &str,
+    ) -> Result<serde_json::Value, WeixinError> {
+        let xml_payload = quick_xml::se::to_string_with_root("xml", &self)
+            .map_err(|e| WeixinError::Unexpected(format!("malformed xml payload: {}", e)))?;
+
+        let client = {
+            // let cert = reqwest::Certificate::from_pem(client_cert.as_bytes())
+            //     .map_err(|e| WeixinError::InvalidConfig(format!("error parsing client_cert: {}", e)))?;
+            // let key = reqwest::Certificate::from_pem(client_key.as_bytes())
+            //     .map_err(|e| WeixinError::InvalidConfig(format!("error parsing client_key: {}", e)))?;
+            let identity = reqwest::Identity::from_pkcs8_pem(client_cert.as_bytes(), client_key.as_bytes()).map_err(|e| {
+                WeixinError::InvalidConfig(format!("error creating identity: {}", e))
+            })?;
+            reqwest::Client::builder()
+                .identity(identity)
+                .build()
+                .map_err(|e| {
+                    WeixinError::Unexpected(format!("error building reqwest client: {}", e))
+                })?
+        };
+
+        let res = client // reqwest::Client::new()
+            .post("https://api.mch.weixin.qq.com/secapi/pay/refund")
+            .body(xml_payload)
+            .send()
+            .await
+            .map_err(|e| WeixinError::ApiError(format!("error request wx refund api: {}", e)))?;
+        let res_text = res.text().await.map_err(|e| {
+            WeixinError::ApiError(format!("error read wx refund api response: {}", e))
+        })?;
+        tracing::debug!("wx refund api response: {:?}", res_text);
+
+        let m = xml_to_map(&res_text)?;
+        let res_obj = serde_json::to_value(&m).map_err(|e| {
+            WeixinError::ApiError(format!("error serializing wx refund api response: {:?}", e))
+        })?;
+
+        if res_obj["return_code"].as_str() != Some("SUCCESS") {
+            return Err(WeixinError::ApiError(format!(
+                "wx refund api return_code != SUCCESS: {}",
+                res_obj["return_msg"].as_str().unwrap_or_default()
+            )));
+        }
+
+        Ok(res_obj)
     }
 }
