@@ -72,7 +72,10 @@ pub async fn create_refund(
             refund_result.status.to_string(),
             refund_result.description,
             refund_result.extra,
-            vec![],
+            vec![
+                crate::prisma::refund::failure_code::set(refund_result.failure_code),
+                crate::prisma::refund::failure_msg::set(refund_result.failure_msg),
+            ],
         )
         .exec()
         .await
@@ -106,7 +109,7 @@ pub async fn create_refund(
             "succeed": is_success,
             "status": &refund.status,
             "description": &refund.description,
-            "failure_code": &refund.failure_msg,
+            "failure_code": &refund.failure_code,
             "failure_msg": &refund.failure_msg,
             "metadata": {},
             "charge": &charge.id,

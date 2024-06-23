@@ -1,11 +1,11 @@
 use super::{
-    mapi::{MapiNotifyPayload, MapiRequestPayload},
+    mapi::{MapiNotifyPayload, MapiRefundPayload, MapiRequestPayload},
     openapi::{OpenApiNotifyPayload, OpenApiRefundPayload, OpenApiRequestPayload},
     AlipayApiType, AlipayError, AlipayPcDirectConfig,
 };
 use crate::core::{
     ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
-    RefundExtra, RefundStatus, RefundResult,
+    RefundExtra, RefundResult, RefundStatus,
 };
 use async_trait::async_trait;
 
@@ -126,10 +126,24 @@ impl ChannelHandler for AlipayPcDirect {
         let config = &self.config;
         let result = match config.alipay_version {
             AlipayApiType::MAPI => {
+                let mut refund_payload = MapiRefundPayload::new(
+                    &config.alipay_pid,
+                    &config.alipay_account,
+                    &order.merchant_order_no,
+                    refund_amount,
+                    &payload.description,
+                )?;
+                refund_payload.sign_rsa(&config.alipay_private_key)?;
+                // refund_payload.sign_md5(&config.alipay_security_key)?;
+                let refund_url = refund_payload.build_refund_url().await?;
+                let failure_msg = format!("需要打开地址进行下一步退款操作: {}", refund_url);
                 RefundResult {
+                    amount: refund_amount,
+                    description: payload.description.clone(),
+                    failure_msg: Some(failure_msg),
                     ..Default::default()
                 }
-            },
+            }
             AlipayApiType::OPENAPI => {
                 let mut refund_payload = OpenApiRefundPayload::new(
                     &config.alipay_app_id,

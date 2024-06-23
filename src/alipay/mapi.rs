@@ -11,6 +11,21 @@ mod mapi_rsa {
         sign::{Signer, Verifier},
     };
 
+    pub fn sign_md5(m: &HashMap<String, String>, sign_key: &str) -> Result<String, AlipayError> {
+        let mut query_list = Vec::<String>::new();
+        m.iter().for_each(|(k, v)| {
+            if !v.is_empty() {
+                let query = format!("{}={}", k, v.trim());
+                query_list.push(query);
+            }
+        });
+        query_list.sort();
+        let sign_sorted_source = format!("{}{}", query_list.join("&"), sign_key);
+        let signature = md5::compute(sign_sorted_source.as_bytes());
+        let signature = format!("{:x}", signature); // .to_uppercase();
+        Ok(signature)
+    }
+
     pub fn sign(m: &HashMap<String, String>, private_key: &str) -> Result<String, AlipayError> {
         let mut query_list = Vec::<String>::new();
         m.iter().for_each(|(k, v)| {
@@ -197,5 +212,88 @@ impl MapiNotifyPayload {
             return Err(AlipayError::ApiError("wrong rsa signature".into()));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct MapiRefundPayload {
+    pub service: String,
+    pub partner: String,
+    pub _input_charset: String,
+    pub sign_type: String,
+    pub sign: String,
+    pub notify_url: String,
+    // pub seller_email: String,
+    pub seller_user_id: String,
+    pub refund_date: String,
+    pub batch_no: String,
+    pub batch_num: String,
+    pub detail_data: String,
+}
+
+impl MapiRefundPayload {
+    pub fn new(
+        alipay_pid: &str,        // 合作者身份 ID, 商家唯一 ID
+        _alipay_account: &str,   // 支付宝账号
+        merchant_order_no: &str, // 商户订单号
+        refund_amount: i32,      // 退款金额, 精确到分
+        description: &str,       // 退款说明
+    ) -> Result<Self, AlipayError> {
+        let refund_amount = format!("{:.2}", refund_amount as f64 / 100.0);
+        let now = chrono::Utc::now();
+        let batch_no = format!(
+            "{}{}",
+            now.format("%Y%m%d").to_string(),
+            now.timestamp_millis().to_string()
+        );
+        let refund_date = now.format("%Y-%m-%d %H:%M:%S").to_string();
+        Ok(Self {
+            service: String::from("refund_fastpay_by_platform_pwd"),
+            partner: alipay_pid.to_string(),
+            _input_charset: String::from("utf-8"),
+            sign_type: String::from("RSA"),
+            sign: String::from(""),
+            notify_url: crate::utils::notify_url(""), // TODO: 需要修改!!!
+            // seller_email: alipay_account.to_string(),
+            seller_user_id: alipay_pid.to_string(),
+            refund_date: refund_date.clone(),
+            batch_no: batch_no.clone(),
+            batch_num: String::from("1"),
+            detail_data: format!("{}^{}^{}", merchant_order_no, refund_amount, description),
+        })
+    }
+
+    pub fn sign_rsa(&mut self, private_key: &str) -> Result<String, AlipayError> {
+        // 这里 deserialize 不会出问题
+        let v = serde_json::to_value(&self).unwrap();
+        let mut m: HashMap<String, String> = serde_json::from_value(v).unwrap();
+        m.remove("sign");
+        m.remove("sign_type");
+        let signature = mapi_rsa::sign(&m, private_key)?;
+        self.sign = signature.clone();
+        Ok(signature)
+    }
+
+    #[allow(dead_code)]
+    pub fn sign_md5(&mut self, sign_key: &str) -> Result<String, AlipayError> {
+        // 这里 deserialize 不会出问题
+        let v = serde_json::to_value(&self).unwrap();
+        let mut m: HashMap<String, String> = serde_json::from_value(v).unwrap();
+        m.remove("sign");
+        m.remove("sign_type");
+        let signature = mapi_rsa::sign_md5(&m, sign_key)?;
+        self.sign = signature.clone();
+        Ok(signature)
+    }
+
+    pub async fn build_refund_url(&self) -> Result<String, AlipayError> {
+        let res = reqwest::Client::new()
+            .get("https://mapi.alipay.com/gateway.do")
+            .query(&self)
+            .build()
+            .map_err(|e| AlipayError::Unexpected(format!("error building refund url: {:?}", e)))?;
+        let url = res.url().to_string();
+        // tracing::debug!("alipay mapi refund url: {}", url);
+        Ok(url)
     }
 }

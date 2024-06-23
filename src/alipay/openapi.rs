@@ -265,8 +265,6 @@ impl OpenApiRefundPayload {
         let v = serde_json::to_value(&self).unwrap();
         let mut m: HashMap<String, String> = serde_json::from_value(v).unwrap();
         m.remove("sign");
-        // m.remove("timestamp");
-        // m.remove("version");
         let signature = openapi_rsa2::sign(&m, private_key)?;
         self.sign = signature.clone();
         Ok(signature)
