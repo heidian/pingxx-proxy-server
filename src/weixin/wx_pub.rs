@@ -126,7 +126,7 @@ impl ChannelHandler for WxPub {
             extra: refund_response.clone(),
             ..Default::default()
         };
-        if refund_response["result_code"].as_str() == Some("10000") {
+        if refund_response["result_code"].as_str() == Some("SUCCESS") {
             result.status = RefundStatus::Pending;
         } else {
             result.status = RefundStatus::Fail;
@@ -140,10 +140,10 @@ impl ChannelHandler for WxPub {
 
     fn process_refund_notify(&self, payload: &str) -> Result<RefundStatus, RefundError> {
         let config = &self.config;
-        let notify_payload = V2ApiRefundNotifyPayload::new(payload)?;
-        notify_payload.verify_md5_sign(&config.wx_pub_key)?;
-        let result_code = notify_payload.result_code;
-        if result_code == "SUCCESS" {
+        let notify_payload = V2ApiRefundNotifyPayload::new(payload, &config.wx_pub_key)?;
+        let refund_status = notify_payload.refund_status;
+        // TODO: 需要检查 notify_payload.refund_id 和 notify_payload.amount
+        if refund_status == "SUCCESS" {
             Ok(RefundStatus::Success)
         } else {
             Ok(RefundStatus::Fail)

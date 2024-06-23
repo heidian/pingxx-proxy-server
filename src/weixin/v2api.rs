@@ -39,6 +39,21 @@ pub mod v2api_md5 {
         sign == *signature
     }
 
+    pub fn decrypt_aes256_ecb(text: &str, sign_key: &str) -> Result<String, String> {
+        let text = data_encoding::BASE64
+            .decode(text.as_bytes())
+            .map_err(|e| format!("error decoding base64: {}", e))?;
+        let sign_key_md5 = md5::compute(sign_key.as_bytes());
+        let sign_key_md5 = format!("{:x}", sign_key_md5).to_lowercase();
+        let cipher = openssl::symm::Cipher::aes_256_ecb();
+        let decrypted = openssl::symm::decrypt(cipher, sign_key_md5.as_bytes(), None, &text)
+            .map_err(|e| format!("error decrypting aes256 ecb: {}", e))?;
+        let decrypted_text = String::from_utf8(decrypted)
+            .map_err(|e| format!("error converting decrypted text to utf8 string: {}", e))?;
+        // tracing::debug!("decrypted_text: {:?}", decrypted_text);
+        Ok(decrypted_text)
+    }
+
     pub fn generate_nonce_str() -> String {
         (0..32)
             .map(|_| {
@@ -370,16 +385,14 @@ impl V2ApiRefundPayload {
 }
 
 pub struct V2ApiRefundNotifyPayload {
-    pub result_code: String,
+    pub refund_status: String,
     pub merchant_order_no: String, // 商户订单号
     pub refund_id: String,         // pingxx-proxy-server 系统里 refund 的 id
     pub amount: i32,               // 退款金额
-    signature: String,
-    m: HashMap<String, String>,
 }
 
 impl V2ApiRefundNotifyPayload {
-    pub fn new(payload: &str) -> Result<Self, WeixinError> {
+    pub fn new(payload: &str, sign_key: &str) -> Result<Self, WeixinError> {
         let m = xml_to_map(payload)?;
 
         if m.get("return_code") != Some(&"SUCCESS".to_string()) {
@@ -390,8 +403,15 @@ impl V2ApiRefundNotifyPayload {
             WeixinError::ApiError("missing required params".into())
         }
 
-        let signature = m.get("sign").ok_or_else(missing_params)?;
-        let result_code = m.get("result_code").ok_or_else(missing_params)?;
+        let req_info_encrypted = m.get("req_info").ok_or_else(missing_params)?;
+        let req_info_xml = v2api_md5::decrypt_aes256_ecb(req_info_encrypted, sign_key)
+            .map_err(|e| WeixinError::ApiError(format!("error decrypting req_info: {}", e)))?;
+        let m = xml_to_map(&req_info_xml)?;
+        tracing::debug!("req_info_xml: {:?}", m);
+
+        // {"success_time": "2024-06-23 21:38:08", "refund_status": "SUCCESS", "refund_request_source": "API", "settlement_refund_fee": "10", "settlement_total_fee": "10", "total_fee": "10", "out_refund_no": "re_171914988503160517598425", "cash_refund_fee": "10", "refund_recv_accout": "支付用户零钱", "out_trade_no": "79320240623213641748", "transaction_id": "4200002184202406235936022560", "refund_account": "REFUND_SOURCE_RECHARGE_FUNDS", "refund_id": "50303410082024062384138175860", "refund_fee": "10"}
+
+        let refund_status = m.get("refund_status").ok_or_else(missing_params)?;
         let out_trade_no = m.get("out_trade_no").ok_or_else(missing_params)?;
         let out_refund_no = m.get("out_refund_no").ok_or_else(missing_params)?;
         // let total_fee = m.get("total_fee").ok_or_else(missing_params)?;
@@ -403,23 +423,10 @@ impl V2ApiRefundNotifyPayload {
             * 100.0) as i32;
 
         Ok(Self {
-            result_code: result_code.to_owned(),
+            refund_status: refund_status.to_owned(),
             merchant_order_no: out_trade_no.to_owned(),
             refund_id: out_refund_no.to_owned(),
             amount,
-            signature: signature.to_owned(),
-            m,
         })
-    }
-
-    pub fn verify_md5_sign(&self, sign_key: &str) -> Result<(), WeixinError> {
-        let mut m = self.m.clone();
-        // k != "sign";
-        m.remove("sign");
-        let verified = v2api_md5::verify(&m, &self.signature, sign_key);
-        if !verified {
-            return Err(WeixinError::ApiError("wrong md5 signature".into()));
-        }
-        Ok(())
     }
 }
