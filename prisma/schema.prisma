@@ -64,6 +64,7 @@ model Order {
     createdAt         DateTime @default(now())
     updatedAt         DateTime @updatedAt
     charges           Charge[]
+    refunds           Refund[]
 }
 
 model Charge {
@@ -74,6 +75,23 @@ model Charge {
     amount       Int
     extra        Json
     credential   Json
+    failure_code String?
+    failure_msg  String?
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+    refunds      Refund[]
+}
+
+model Refund {
+    id           String   @id
+    chargeId     String
+    charge       Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+    orderId      String
+    order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    amount       Int
+    status       String
+    description  String
+    extra        Json
     failure_code String?
     failure_msg  String?
     createdAt    DateTime @default(now())
