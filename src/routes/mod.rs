@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use charge::{create_charge, CreateChargeRequestPayload};
-use notify::{create_charge_notify, retry_charge_notify};
+use notify::{create_charge_notify, create_refund_notify, retry_notify};
 use order::{create_order, retrieve_order, CreateOrderRequestPayload};
 use refund::{create_refund, CreateRefundRequestPayload};
 
@@ -129,10 +129,30 @@ pub async fn get_routes() -> Router {
                 create_charge_notify(&prisma_client, charge_id, body).await
             })
         })
+        .route("/notify/charges/:charge_id/refunds/:refund_id", {
+            let prisma_client = prisma_client.clone();
+            post(|
+                Query(query): Query<serde_json::Value>,
+                Path((charge_id, refund_id)): Path<(String, String)>,
+                headers: HeaderMap,
+                body: String
+            | async move {
+                let headers_str = format!("{:?}", headers);
+                tracing::info!(
+                    charge_id = charge_id,
+                    refund_id = refund_id,
+                    query = query.to_string(),
+                    payload = body.as_str(),
+                    headers = &headers_str,
+                    "create_refund_notify"
+                );
+                create_refund_notify(&prisma_client, charge_id, refund_id, body).await
+            })
+        })
         .route("/notify/:id/retry", {
             let prisma_client = prisma_client.clone();
             post(|Path(id): Path<i32>| async move {
-                retry_charge_notify(&prisma_client, id).await
+                retry_notify(&prisma_client, id).await
             })
         })
 }

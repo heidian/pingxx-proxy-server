@@ -92,7 +92,7 @@ impl ChannelHandler for AlipayWap {
         Ok(res_json)
     }
 
-    fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
+    fn process_charge_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
         let config = &self.config;
         let success = match config.alipay_version {
             AlipayApiType::MAPI => {
@@ -178,6 +178,9 @@ impl ChannelHandler for AlipayWap {
             }
         };
         Ok(result)
-        // Err(RefundError::Unexpected("not implemented".to_string()))
+    }
+
+    fn process_refund_notify(&self, _payload: &str) -> Result<RefundStatus, RefundError> {
+        Err(RefundError::Unexpected("not implemented".to_string()))
     }
 }

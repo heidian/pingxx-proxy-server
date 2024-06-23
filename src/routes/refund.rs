@@ -82,8 +82,7 @@ pub async fn create_refund(
         .await
         .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
 
-    let is_success = refund_result.status == RefundStatus::Success;
-    if is_success {
+    if refund_result.status == RefundStatus::Success {
         prisma_client
             .order()
             .update(
@@ -97,6 +96,10 @@ pub async fn create_refund(
             .exec()
             .await
             .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+    } else if refund_result.status == RefundStatus::Fail {
+        //
+    } else if refund_result.status == RefundStatus::Pending {
+        //
     }
 
     let res_json = json!({
@@ -107,7 +110,7 @@ pub async fn create_refund(
             "id": &refund.id,
             "object": "refund",
             "amount": &refund.amount,
-            "succeed": is_success,
+            "succeed": refund_result.status == RefundStatus::Success,
             "status": &refund.status,
             "description": &refund.description,
             "failure_code": &refund.failure_code,

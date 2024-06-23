@@ -112,7 +112,7 @@ mod request {
             payload: &ChargeExtra,
         ) -> Result<serde_json::Value, ChargeError>;
 
-        fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
+        fn process_charge_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
 
         async fn create_refund(
             &self,
@@ -122,6 +122,8 @@ mod request {
             refund_amount: i32,
             payload: &RefundExtra,
         ) -> Result<RefundResult, RefundError>;
+
+        fn process_refund_notify(&self, payload: &str) -> Result<RefundStatus, RefundError>;
     }
 
     /**

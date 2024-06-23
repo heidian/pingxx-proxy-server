@@ -1,5 +1,5 @@
 use super::{
-    v2api::{self, V2ApiNotifyPayload, V2ApiRefundPayload, V2ApiRequestPayload},
+    v2api::{self, V2ApiNotifyPayload, V2ApiRefundNotifyPayload, V2ApiRefundPayload, V2ApiRequestPayload},
     WeixinError, WxPubConfig,
 };
 use crate::core::{
@@ -84,7 +84,7 @@ impl ChannelHandler for WxPub {
         Ok(res_json)
     }
 
-    fn process_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
+    fn process_charge_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError> {
         let config = &self.config;
         let notify_payload = V2ApiNotifyPayload::new(payload)?;
         notify_payload.verify_md5_sign(&config.wx_pub_key)?;
@@ -127,7 +127,7 @@ impl ChannelHandler for WxPub {
             ..Default::default()
         };
         if refund_response["result_code"].as_str() == Some("10000") {
-            result.status = RefundStatus::Success;
+            result.status = RefundStatus::Pending;
         } else {
             result.status = RefundStatus::Fail;
             result.failure_msg = match refund_response["err_code_des"].as_str() {
@@ -136,6 +136,18 @@ impl ChannelHandler for WxPub {
             };
         }
         Ok(result)
+    }
+
+    fn process_refund_notify(&self, payload: &str) -> Result<RefundStatus, RefundError> {
+        let config = &self.config;
+        let notify_payload = V2ApiRefundNotifyPayload::new(payload)?;
+        notify_payload.verify_md5_sign(&config.wx_pub_key)?;
+        let result_code = notify_payload.result_code;
+        if result_code == "SUCCESS" {
+            Ok(RefundStatus::Success)
+        } else {
+            Ok(RefundStatus::Fail)
+        }
     }
 }
 

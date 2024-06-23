@@ -329,9 +329,11 @@ impl V2ApiRefundPayload {
             //     .map_err(|e| WeixinError::InvalidConfig(format!("error parsing client_cert: {}", e)))?;
             // let key = reqwest::Certificate::from_pem(client_key.as_bytes())
             //     .map_err(|e| WeixinError::InvalidConfig(format!("error parsing client_key: {}", e)))?;
-            let identity = reqwest::Identity::from_pkcs8_pem(client_cert.as_bytes(), client_key.as_bytes()).map_err(|e| {
-                WeixinError::InvalidConfig(format!("error creating identity: {}", e))
-            })?;
+            let identity =
+                reqwest::Identity::from_pkcs8_pem(client_cert.as_bytes(), client_key.as_bytes())
+                    .map_err(|e| {
+                        WeixinError::InvalidConfig(format!("error creating identity: {}", e))
+                    })?;
             reqwest::Client::builder()
                 .identity(identity)
                 .build()
@@ -364,5 +366,60 @@ impl V2ApiRefundPayload {
         }
 
         Ok(res_obj)
+    }
+}
+
+pub struct V2ApiRefundNotifyPayload {
+    pub result_code: String,
+    pub merchant_order_no: String, // 商户订单号
+    pub refund_id: String,         // pingxx-proxy-server 系统里 refund 的 id
+    pub amount: i32,               // 退款金额
+    signature: String,
+    m: HashMap<String, String>,
+}
+
+impl V2ApiRefundNotifyPayload {
+    pub fn new(payload: &str) -> Result<Self, WeixinError> {
+        let m = xml_to_map(payload)?;
+
+        if m.get("return_code") != Some(&"SUCCESS".to_string()) {
+            return Err(WeixinError::ApiError("return_code not SUCCESS".into()));
+        }
+
+        fn missing_params() -> WeixinError {
+            WeixinError::ApiError("missing required params".into())
+        }
+
+        let signature = m.get("sign").ok_or_else(missing_params)?;
+        let result_code = m.get("result_code").ok_or_else(missing_params)?;
+        let out_trade_no = m.get("out_trade_no").ok_or_else(missing_params)?;
+        let out_refund_no = m.get("out_refund_no").ok_or_else(missing_params)?;
+        // let total_fee = m.get("total_fee").ok_or_else(missing_params)?;
+        let refund_fee = m.get("refund_fee").ok_or_else(missing_params)?;
+
+        let amount = (refund_fee
+            .parse::<f64>()
+            .map_err(|_| WeixinError::ApiError("invalid refund_fee".into()))?
+            * 100.0) as i32;
+
+        Ok(Self {
+            result_code: result_code.to_owned(),
+            merchant_order_no: out_trade_no.to_owned(),
+            refund_id: out_refund_no.to_owned(),
+            amount,
+            signature: signature.to_owned(),
+            m,
+        })
+    }
+
+    pub fn verify_md5_sign(&self, sign_key: &str) -> Result<(), WeixinError> {
+        let mut m = self.m.clone();
+        // k != "sign";
+        m.remove("sign");
+        let verified = v2api_md5::verify(&m, &self.signature, sign_key);
+        if !verified {
+            return Err(WeixinError::ApiError("wrong md5 signature".into()));
+        }
+        Ok(())
     }
 }

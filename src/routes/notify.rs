@@ -1,10 +1,12 @@
 use super::{charge::ChargeResponsePayload, order::OrderResponsePayload};
-use crate::core::{ChannelHandler, ChargeError, ChargeStatus, PaymentChannel};
+use crate::core::{
+    ChannelHandler, ChargeError, ChargeStatus, PaymentChannel, RefundError, RefundStatus,
+};
 use crate::{alipay, weixin};
 use serde_json::json;
 use std::str::FromStr;
 
-async fn send_webhook(
+async fn send_charge_webhook(
     app: &crate::prisma::app::Data,
     sub_app: &crate::prisma::sub_app::Data,
     order: &crate::prisma::order::Data,
@@ -49,7 +51,7 @@ async fn send_webhook(
     Ok(())
 }
 
-async fn process_notify(
+async fn process_charge_notify(
     prisma_client: &crate::prisma::PrismaClient,
     charge_id: &str,
     payload: &str,
@@ -58,7 +60,7 @@ async fn process_notify(
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-        ChargeError::MalformedRequest(format!("error parsing charge channel: {:?}", e))
+        ChargeError::InternalError(format!("error parsing charge channel: {:?}", e))
     })?;
 
     let handler: Box<dyn ChannelHandler + Send> = match channel {
@@ -71,7 +73,7 @@ async fn process_notify(
         PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
     };
 
-    let charge_status = handler.process_notify(payload)?;
+    let charge_status = handler.process_charge_notify(payload)?;
 
     if charge_status == ChargeStatus::Success {
         // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
@@ -94,7 +96,7 @@ async fn process_notify(
 
         let (order, charges, _, _) =
             crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-        let _ = send_webhook(&app, &sub_app, &order, &charges, &charge).await;
+        let _ = send_charge_webhook(&app, &sub_app, &order, &charges, &charge).await;
     }
 
     match channel {
@@ -113,36 +115,170 @@ async fn process_notify(
 pub async fn create_charge_notify(
     prisma_client: &crate::prisma::PrismaClient,
     charge_id: String,
-    charge_notify_payload: String,
+    notify_payload: String,
 ) -> Result<String, ChargeError> {
     prisma_client
         .charge_notify_history()
-        .create(charge_id.clone(), charge_notify_payload.clone(), vec![])
+        .create(charge_id.clone(), notify_payload.clone(), vec![])
         .exec()
         .await
         .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
-    let return_body = process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
+    let return_body = process_charge_notify(&prisma_client, &charge_id, &notify_payload).await?;
     Ok(return_body)
 }
 
-pub async fn retry_charge_notify(
+async fn send_refund_webhook(
+    _app: &crate::prisma::app::Data,
+    _sub_app: &crate::prisma::sub_app::Data,
+    _order: &crate::prisma::order::Data,
+    _refund: &crate::prisma::refund::Data,
+) -> Result<(), ()> {
+    // 不发送 refund webhook, 现在 ping++ 发送的 order.refunded webhook 没有 refund 信息, 只能靠主动查询
+    Ok(())
+}
+
+async fn process_refund_notify(
+    prisma_client: &crate::prisma::PrismaClient,
+    charge_id: &str,
+    refund_id: &str,
+    payload: &str,
+) -> Result<String, RefundError> {
+    let (charge, mut order, app, sub_app) =
+        crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
+
+    let mut refund = prisma_client
+        .refund()
+        .find_unique(crate::prisma::refund::id::equals(refund_id.to_string()))
+        .exec()
+        .await
+        .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?
+        .ok_or_else(|| RefundError::BadRequest(format!("refund {} not found", refund_id)))?;
+
+    let channel = PaymentChannel::from_str(&charge.channel)
+        .map_err(|e| RefundError::Unexpected(format!("error parsing charge channel: {:?}", e)))?;
+
+    let handler: Box<dyn ChannelHandler + Send> = match channel {
+        PaymentChannel::AlipayPcDirect => {
+            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
+        }
+        PaymentChannel::AlipayWap => {
+            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
+        }
+        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
+    };
+
+    let refund_status = handler.process_refund_notify(payload)?;
+
+    if refund_status == RefundStatus::Success {
+        refund = prisma_client
+            .refund()
+            .update(
+                crate::prisma::refund::id::equals(refund_id.to_string()),
+                vec![crate::prisma::refund::status::set(
+                    refund_status.to_string(),
+                )],
+            )
+            .exec()
+            .await
+            .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+        order = prisma_client
+            .order()
+            .update(
+                crate::prisma::order::id::equals(order.id.clone()),
+                vec![
+                    crate::prisma::order::refunded::set(true),
+                    crate::prisma::order::amount_refunded::increment(refund.amount),
+                    crate::prisma::order::status::set("refunded".to_string()),
+                ],
+            )
+            .exec()
+            .await
+            .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+
+        // let (order, charges, _, _) =
+        //     crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
+
+        let _ = send_refund_webhook(&app, &sub_app, &order, &refund).await;
+    } else if refund_status == RefundStatus::Fail {
+        // TODO: 需要把错误信息记录在 refund.failure_msg 上
+        let _ = refund;
+    }
+
+    match channel {
+        PaymentChannel::AlipayPcDirect => {
+            Ok("success".to_string())
+        }
+        PaymentChannel::AlipayWap => {
+            Ok("success".to_string())
+        }
+        PaymentChannel::WxPub => {
+            Ok("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>".to_string())
+        }
+    }
+}
+
+pub async fn create_refund_notify(
+    prisma_client: &crate::prisma::PrismaClient,
+    charge_id: String,
+    refund_id: String,
+    notify_payload: String,
+) -> Result<String, RefundError> {
+    prisma_client
+        .charge_notify_history()
+        .create(
+            charge_id.clone(),
+            notify_payload.clone(),
+            vec![crate::prisma::charge_notify_history::refund_id::set(Some(
+                refund_id.clone(),
+            ))],
+        )
+        .exec()
+        .await
+        .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+    let return_body =
+        process_refund_notify(&prisma_client, &charge_id, &refund_id, &notify_payload).await?;
+    Ok(return_body)
+}
+
+pub async fn retry_notify(
     prisma_client: &crate::prisma::PrismaClient,
     id: i32,
-) -> Result<String, ChargeError> {
+) -> Result<String, ()> {
     let history = prisma_client
         .charge_notify_history()
         .find_unique(crate::prisma::charge_notify_history::id::equals(id))
         .exec()
         .await
-        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?
+        .map_err(|e| {
+            tracing::error!("sql error: {:?}", e);
+        })?
         .ok_or_else(|| {
-            ChargeError::MalformedRequest(format!("charge notify history {} not found", id))
+            tracing::error!("charge notify history {} not found", id);
         })?;
     let charge_id = history.charge_id;
+    let refund_id = history.refund_id;
     let charge_notify_payload = history.data;
 
-    let return_body = process_notify(&prisma_client, &charge_id, &charge_notify_payload).await?;
-    Ok(return_body)
+    if let Some(refund_id) = refund_id {
+        let return_body = process_refund_notify(
+            &prisma_client,
+            &charge_id,
+            &refund_id,
+            &charge_notify_payload,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("process_refund_notify error {:?}", e);
+        })?;
+        return Ok(return_body);
+    } else {
+        let return_body = process_charge_notify(&prisma_client, &charge_id, &charge_notify_payload)
+            .await
+            .map_err(|e| {
+                tracing::error!("process_charge_notify error {:?}", e);
+            })?;
+        Ok(return_body)
+    }
 }
 
 #[allow(unreachable_code)]
@@ -169,7 +305,7 @@ mod tests {
             .unwrap();
 
         let payload = history.data.clone();
-        process_notify(&prisma_client, charge_id, &payload)
+        process_charge_notify(&prisma_client, charge_id, &payload)
             .await
             .unwrap();
     }
