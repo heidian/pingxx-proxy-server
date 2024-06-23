@@ -47,12 +47,13 @@ pub struct OrderResponsePayload {
 impl OrderResponsePayload {
     pub fn new(
         order: &crate::prisma::order::Data,
+        charges: &Vec<crate::prisma::charge::Data>,
         app: &crate::prisma::app::Data,
         sub_app: &crate::prisma::sub_app::Data,
     ) -> Self {
         let charges = {
-            let empty: Vec<crate::prisma::charge::Data> = vec![];
-            let charges = order.charges.as_ref().unwrap_or(&empty);
+            // let empty: Vec<crate::prisma::charge::Data> = vec![];
+            // let charges = order.charges.as_ref().unwrap_or(&empty);
             let data = charges
                 .iter()
                 .filter_map(|charge| {
@@ -128,8 +129,8 @@ pub async fn create_order(
         .await
         .map_err(|e| OrderError::Unexpected(format!("sql error: {:?}", e)))?;
 
-    let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
-    let result = OrderResponsePayload::new(&order, &app, &sub_app);
+    let (order, charges, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
+    let result = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
 
     Ok(result)
 }
@@ -138,8 +139,8 @@ pub async fn retrieve_order(
     prisma_client: &crate::prisma::PrismaClient,
     order_id: String,
 ) -> Result<serde_json::Value, OrderError> {
-    let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
-    let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
+    let (order, charges, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
+    let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
     let mut result = serde_json::to_value(order_response).map_err(|e| {
         OrderError::Unexpected(format!("error serializing order response payload: {:?}", e))
     })?;

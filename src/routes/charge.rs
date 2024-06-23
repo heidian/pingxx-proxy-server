@@ -53,7 +53,7 @@ pub async fn create_charge(
 ) -> Result<serde_json::Value, ChargeError> {
     let charge_id = crate::utils::generate_id("ch_");
 
-    let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
+    let (order, _charges, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
 
     let handler: Box<dyn ChannelHandler + Send> = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
@@ -96,7 +96,7 @@ pub async fn create_charge(
         .charge()
         .create(
             charge_id.clone(),
-            crate::prisma::order::id::equals(order_id),
+            crate::prisma::order::id::equals(order_id.clone()),
             charge_req_payload.channel.to_string(),
             charge_req_payload.charge_amount,
             extra,
@@ -107,7 +107,10 @@ pub async fn create_charge(
         .await
         .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
-    let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
+    // 重新 load 一下 order 数据，因为 order.charges 已经更新
+    let (order, charges, _, _) =
+        crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
+    let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
     let mut result = serde_json::to_value(order_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;

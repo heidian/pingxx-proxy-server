@@ -36,6 +36,7 @@ mod db {
     ) -> Result<
         (
             crate::prisma::order::Data,
+            Vec<crate::prisma::charge::Data>,
             crate::prisma::app::Data,
             crate::prisma::sub_app::Data,
         ),
@@ -69,7 +70,9 @@ mod db {
             (*app, *sub_app)
         };
 
-        Ok((order, app, sub_app))
+        let charges = order.charges.clone().unwrap_or_default();
+
+        Ok((order, charges, app, sub_app))
     }
 
     pub async fn load_charge_from_db(

@@ -8,18 +8,22 @@ async fn send_webhook(
     app: &crate::prisma::app::Data,
     sub_app: &crate::prisma::sub_app::Data,
     order: &crate::prisma::order::Data,
+    charges: &Vec<crate::prisma::charge::Data>,
     charge: &crate::prisma::charge::Data,
 ) -> Result<(), ()> {
-    let order_response = OrderResponsePayload::new(&order, &app, &sub_app);
+    let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
     let mut event_data = serde_json::to_value(order_response).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);
     })?;
 
-    event_data["charge_essentials"] = ChargeResponsePayload::new(&charge).map_err(|e| {
-        tracing::error!("{:?}", e);
-    })?.to_json().map_err(|e| {
-        tracing::error!("error serializing charge essentials: {:?}", e);
-    })?;
+    event_data["charge_essentials"] = ChargeResponsePayload::new(&charge)
+        .map_err(|e| {
+            tracing::error!("{:?}", e);
+        })?
+        .to_json()
+        .map_err(|e| {
+            tracing::error!("error serializing charge essentials: {:?}", e);
+        })?;
 
     let event_payload = json!({
         "id": crate::utils::generate_id("evt_"),
@@ -50,7 +54,7 @@ async fn process_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let (charge, mut order, app, sub_app) =
+    let (charge, order, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
@@ -71,10 +75,10 @@ async fn process_notify(
 
     if charge_status == ChargeStatus::Success {
         // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
-        order = prisma_client
+        prisma_client
             .order()
             .update(
-                crate::prisma::order::id::equals(order.id),
+                crate::prisma::order::id::equals(order.id.clone()),
                 vec![
                     crate::prisma::order::paid::set(true),
                     crate::prisma::order::time_paid::set(Some(
@@ -88,7 +92,9 @@ async fn process_notify(
             .await
             .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
-        let _ = send_webhook(&app, &sub_app, &order, &charge).await;
+        let (order, charges, _, _) =
+            crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
+        let _ = send_webhook(&app, &sub_app, &order, &charges, &charge).await;
     }
 
     match channel {
