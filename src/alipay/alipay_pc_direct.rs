@@ -119,7 +119,7 @@ impl ChannelHandler for AlipayPcDirect {
     async fn create_refund(
         &self,
         order: &crate::prisma::order::Data,
-        _charge: &crate::prisma::charge::Data,
+        refund_id: &str,
         refund_amount: i32,
         payload: &RefundExtra,
     ) -> Result<RefundResult, RefundError> {
@@ -127,8 +127,9 @@ impl ChannelHandler for AlipayPcDirect {
         let result = match config.alipay_version {
             AlipayApiType::MAPI => {
                 let mut refund_payload = MapiRefundPayload::new(
+                    refund_id,
                     &config.alipay_pid,
-                    &config.alipay_account,
+                    // &config.alipay_account,
                     &order.merchant_order_no,
                     refund_amount,
                     &payload.description,

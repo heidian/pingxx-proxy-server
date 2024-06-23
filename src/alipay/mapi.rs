@@ -233,8 +233,9 @@ pub struct MapiRefundPayload {
 
 impl MapiRefundPayload {
     pub fn new(
+        refund_id: &str,
         alipay_pid: &str,        // 合作者身份 ID, 商家唯一 ID
-        _alipay_account: &str,   // 支付宝账号
+        // alipay_account: &str,   // 支付宝账号
         merchant_order_no: &str, // 商户订单号
         refund_amount: i32,      // 退款金额, 精确到分
         description: &str,       // 退款说明
@@ -253,7 +254,7 @@ impl MapiRefundPayload {
             _input_charset: String::from("utf-8"),
             sign_type: String::from("RSA"),
             sign: String::from(""),
-            notify_url: crate::utils::notify_url(""), // TODO: 需要修改!!!
+            notify_url: crate::utils::refund_notify_url(refund_id),
             // seller_email: alipay_account.to_string(),
             seller_user_id: alipay_pid.to_string(),
             refund_date: refund_date.clone(),

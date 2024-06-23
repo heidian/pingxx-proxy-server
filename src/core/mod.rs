@@ -117,7 +117,7 @@ mod request {
         async fn create_refund(
             &self,
             order: &crate::prisma::order::Data,
-            charge: &crate::prisma::charge::Data,
+            refund_id: &str,
             refund_amount: i32,
             payload: &RefundExtra,
         ) -> Result<RefundResult, RefundError>;

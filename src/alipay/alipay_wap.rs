@@ -119,7 +119,7 @@ impl ChannelHandler for AlipayWap {
     async fn create_refund(
         &self,
         _order: &crate::prisma::order::Data,
-        _charge: &crate::prisma::charge::Data,
+        _refund_id: &str,
         _refund_amount: i32,
         _payload: &RefundExtra,
     ) -> Result<RefundResult, RefundError> {
