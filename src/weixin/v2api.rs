@@ -241,11 +241,11 @@ impl V2ApiNotifyPayload {
         })
     }
 
-    pub fn verify_md5_sign(&self, public_key: &str) -> Result<(), WeixinError> {
+    pub fn verify_md5_sign(&self, sign_key: &str) -> Result<(), WeixinError> {
         let mut m = self.m.clone();
         // k != "sign";
         m.remove("sign");
-        let verified = v2api_md5::verify(&self.m, &self.signature, public_key);
+        let verified = v2api_md5::verify(&m, &self.signature, sign_key);
         if !verified {
             return Err(WeixinError::ApiError("wrong md5 signature".into()));
         }
