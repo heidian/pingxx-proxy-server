@@ -101,6 +101,7 @@ model Refund {
 model ChargeNotifyHistory {
     id        Int      @id @default(autoincrement())
     chargeId  String
+    refundId  String?
     data      String   @db.Text
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
