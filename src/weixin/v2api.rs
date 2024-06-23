@@ -178,7 +178,7 @@ impl V2ApiRequestPayload {
 }
 
 pub struct V2ApiNotifyPayload {
-    pub trade_status: String,
+    pub result_code: String,
     pub merchant_order_no: String,
     pub amount: i32,
     signature: String,
@@ -222,8 +222,8 @@ impl V2ApiNotifyPayload {
             WeixinError::ApiError("missing required params".into())
         }
 
-        let signature = m.get("signature").ok_or_else(missing_params)?;
-        let trade_status = m.get("trade_status").ok_or_else(missing_params)?;
+        let signature = m.get("sign").ok_or_else(missing_params)?;
+        let result_code = m.get("result_code").ok_or_else(missing_params)?;
         let out_trade_no = m.get("out_trade_no").ok_or_else(missing_params)?;
         let total_fee = m.get("total_fee").ok_or_else(missing_params)?;
 
@@ -233,7 +233,7 @@ impl V2ApiNotifyPayload {
             * 100.0) as i32;
 
         Ok(Self {
-            trade_status: trade_status.to_owned(),
+            result_code: result_code.to_owned(),
             merchant_order_no: out_trade_no.to_owned(),
             amount,
             signature: signature.to_owned(),

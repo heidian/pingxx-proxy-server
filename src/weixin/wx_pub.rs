@@ -88,8 +88,8 @@ impl ChannelHandler for WxPub {
         let config = &self.config;
         let notify_payload = V2ApiNotifyPayload::new(payload)?;
         notify_payload.verify_md5_sign(&config.wx_pub_key)?;
-        let trade_status = notify_payload.trade_status;
-        if trade_status == "SUCCESS" {
+        let result_code = notify_payload.result_code;
+        if result_code == "SUCCESS" {
             Ok(ChargeStatus::Success)
         } else {
             Ok(ChargeStatus::Fail)
