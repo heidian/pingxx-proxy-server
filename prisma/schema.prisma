@@ -76,7 +76,7 @@ model Charge {
     extra        Json
     credential   Json
     failure_code String?
-    failure_msg  String?
+    failure_msg  String?  @db.Text
     createdAt    DateTime @default(now())
     updatedAt    DateTime @updatedAt
     refunds      Refund[]
@@ -93,7 +93,7 @@ model Refund {
     description  String
     extra        Json
     failure_code String?
-    failure_msg  String?
+    failure_msg  String?  @db.Text
     createdAt    DateTime @default(now())
     updatedAt    DateTime @updatedAt
 }
