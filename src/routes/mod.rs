@@ -13,7 +13,7 @@ use axum::{
 use charge::{create_charge, CreateChargeRequestPayload};
 use notify::{create_charge_notify, create_refund_notify, retry_notify};
 use order::{create_order, retrieve_order, CreateOrderRequestPayload};
-use refund::{create_refund, CreateRefundRequestPayload};
+use refund::{create_refund, retrieve_refund, CreateRefundRequestPayload};
 
 async fn test() -> &'static str {
     "test"
@@ -105,6 +105,18 @@ pub async fn get_routes() -> Router {
                         (StatusCode::BAD_REQUEST, err_msg).into_response()
                     })?;
                 match create_refund(&prisma_client, order_id, refund_req_payload).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
+            })
+        })
+        .route("/v1/orders/:order_id/order_refunds/:refund_id", {
+            let prisma_client = prisma_client.clone();
+            get(|
+                Path((order_id, refund_id)): Path<(String, String)>,
+            | async move {
+                tracing::info!(order_id, refund_id, "retrieve_refund");
+                match retrieve_refund(&prisma_client, order_id, refund_id).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }

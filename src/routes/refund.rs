@@ -91,7 +91,7 @@ pub async fn create_refund(
                     crate::prisma::order::refunded::set(true),
                     crate::prisma::order::amount_refunded::increment(refund_result.amount),
                     crate::prisma::order::status::set("refunded".to_string()),
-                ]
+                ],
             )
             .exec()
             .await
@@ -122,4 +122,54 @@ pub async fn create_refund(
         }]
     });
     Ok(res_json)
+}
+
+pub async fn retrieve_refund(
+    prisma_client: &crate::prisma::PrismaClient,
+    order_id: String,
+    refund_id: String,
+) -> Result<serde_json::Value, RefundError> {
+    let refund = prisma_client
+        .refund()
+        .find_unique(crate::prisma::refund::id::equals(refund_id.to_string()))
+        .with(crate::prisma::refund::charge::fetch())
+        .with(crate::prisma::refund::order::fetch())
+        .exec()
+        .await
+        .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?
+        .ok_or_else(|| RefundError::BadRequest(format!("refund {} not found", refund_id)))?;
+    let (charge, order) = {
+        let refund = refund.clone();
+        let charge = refund.charge.ok_or_else(|| {
+            RefundError::Unexpected(format!("failed fetch charge on refund {}", refund_id))
+        })?;
+        let order = refund.order.ok_or_else(|| {
+            RefundError::Unexpected(format!("failed fetch order on refund {}", refund_id))
+        })?;
+        (*charge, *order)
+    };
+
+    if order.id != order_id {
+        return Err(RefundError::BadRequest(format!(
+            "refund {} doesn't belong to order {}",
+            refund_id, order_id
+        )));
+    }
+
+    Ok(json!({
+        "id": refund.id,
+        "object": "refund",
+        "order_no": refund.id,
+        "amount": refund.amount,
+        "created": refund.created_at.timestamp(),
+        "succeed": refund.status == "succeeded",
+        "status": refund.status,
+        "description": refund.description,
+        "failure_code": refund.failure_code,
+        "failure_msg": refund.failure_msg,
+        "charge": charge.id,
+        "charge_order_no": order.merchant_order_no,
+        "funding_source": null,
+        "extra": refund.extra,
+    }))
 }
