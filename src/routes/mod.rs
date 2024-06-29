@@ -8,14 +8,14 @@ use axum::{
     extract::{Path, Query},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use charge::{create_charge, CreateChargeRequestPayload};
 use notify::{create_charge_notify, create_refund_notify, retry_notify};
 use order::{create_order, retrieve_order, CreateOrderRequestPayload};
 use refund::{create_refund, retrieve_refund, CreateRefundRequestPayload};
-use sub_app::retrieve_sub_app;
+use sub_app::{create_or_update_sub_app_channel, retrieve_sub_app};
 
 async fn test() -> &'static str {
     "test"
@@ -27,8 +27,7 @@ pub async fn get_routes() -> Router {
         .expect("error getting prisma client");
     let prisma_client = std::sync::Arc::new(prisma_client);
 
-    Router::new()
-        .route("/test", get(test))
+    Router::new().route("/test", get(test))
         .route(
             "/.ping",
             post({
@@ -174,7 +173,34 @@ pub async fn get_routes() -> Router {
             get(|Path((app_id, sub_app_id)): Path<(String, String)>| async move {
                 match retrieve_sub_app(&prisma_client, app_id, sub_app_id).await {
                     Ok(result) => Ok(Json(result)),
-                    Err(error) => Err(error.into_response()),
+                    Err(error) => Err((StatusCode::BAD_REQUEST, error).into_response()),
+                }
+            })
+        })
+        .route("/v1/apps/:app_id/sub_apps/:sub_app_id/channels/:channel", {
+            let prisma_client = prisma_client.clone();
+            put(|
+                Path((app_id, sub_app_id, channel)): Path<(String, String, String)>,
+                Json(payload): Json<serde_json::Value>
+            | async move {
+                let params = payload["params"].clone();
+                match create_or_update_sub_app_channel(&prisma_client, app_id, sub_app_id, channel, params).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err((StatusCode::BAD_REQUEST, error).into_response()),
+                }
+            })
+        })
+        .route("/v1/apps/:app_id/sub_apps/:sub_app_id/channels", {
+            let prisma_client = prisma_client.clone();
+            post(|
+                Path((app_id, sub_app_id)): Path<(String, String)>,
+                Json(payload): Json<serde_json::Value>
+            | async move {
+                let channel = payload["channel"].as_str().unwrap_or_default().to_string();
+                let params = payload["params"].clone();
+                match create_or_update_sub_app_channel(&prisma_client, app_id, sub_app_id, channel, params).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err((StatusCode::BAD_REQUEST, error).into_response()),
                 }
             })
         })

@@ -130,5 +130,5 @@ mod error {
 
 pub use alipay_pc_direct::AlipayPcDirect;
 pub use alipay_wap::AlipayWap;
-use config::*;
+pub use config::*;
 use error::*;

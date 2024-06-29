@@ -67,7 +67,7 @@ mod error {
     }
 }
 
-use config::*;
-use error::*;
 pub use wx_pub::WxPub;
 pub use wx_lite::WxLite;
+pub use config::*;
+use error::*;

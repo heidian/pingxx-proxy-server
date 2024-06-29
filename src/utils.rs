@@ -122,10 +122,14 @@ mod db {
     ) -> Result<crate::prisma::channel_params::Data, DBError> {
         let channel_params = prisma_client
             .channel_params()
-            .find_unique(crate::prisma::channel_params::sub_app_id_channel(
-                sub_app_id.to_string(),
-                channel.to_string(),
-            ))
+            .find_first(vec![
+                crate::prisma::channel_params::sub_app_id::equals(Some(sub_app_id.to_string())),
+                crate::prisma::channel_params::channel::equals(channel.to_string()),
+            ])
+            // .find_unique(crate::prisma::channel_params::sub_app_id_channel(
+            //     sub_app_id.to_string(),
+            //     channel.to_string(),
+            // ))
             .exec()
             .await?
             .ok_or_else(|| {
