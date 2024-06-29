@@ -3,6 +3,7 @@ mod notify;
 mod order;
 mod prelude;
 mod refund;
+mod sub_app;
 use axum::{
     extract::{Path, Query},
     http::{HeaderMap, StatusCode},
@@ -14,6 +15,7 @@ use charge::{create_charge, CreateChargeRequestPayload};
 use notify::{create_charge_notify, create_refund_notify, retry_notify};
 use order::{create_order, retrieve_order, CreateOrderRequestPayload};
 use refund::{create_refund, retrieve_refund, CreateRefundRequestPayload};
+use sub_app::retrieve_sub_app;
 
 async fn test() -> &'static str {
     "test"
@@ -165,6 +167,15 @@ pub async fn get_routes() -> Router {
             let prisma_client = prisma_client.clone();
             post(|Path(id): Path<i32>| async move {
                 retry_notify(&prisma_client, id).await
+            })
+        })
+        .route("/v1/apps/:app_id/sub_apps/:sub_app_id", {
+            let prisma_client = prisma_client.clone();
+            get(|Path((app_id, sub_app_id)): Path<(String, String)>| async move {
+                match retrieve_sub_app(&prisma_client, app_id, sub_app_id).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
             })
         })
 }

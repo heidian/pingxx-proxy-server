@@ -18,14 +18,14 @@ model App {
 }
 
 model SubApp {
-    id        String          @id
-    appId     String
-    app       App             @relation(fields: [appId], references: [id], onDelete: Cascade)
-    name      String
-    createdAt DateTime        @default(now())
-    updatedAt DateTime        @updatedAt
-    channels  ChannelParams[]
-    orders    Order[]
+    id             String          @id
+    appId          String
+    app            App             @relation(fields: [appId], references: [id], onDelete: Cascade)
+    name           String
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    channel_params ChannelParams[]
+    orders         Order[]
 }
 
 model ChannelParams {
