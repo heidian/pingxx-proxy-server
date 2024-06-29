@@ -9,12 +9,13 @@ datasource db {
 }
 
 model App {
-    id        String   @id
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    subApps   SubApp[]
-    orders    Order[]
+    id             String          @id
+    name           String
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    subApps        SubApp[]
+    channel_params ChannelParams[]
+    orders         Order[]
 }
 
 model SubApp {
@@ -30,14 +31,16 @@ model SubApp {
 
 model ChannelParams {
     id        Int      @id @default(autoincrement())
-    subAppId  String
-    subApp    SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
+    appId     String?
+    app       App?     @relation(fields: [appId], references: [id], onDelete: Cascade)
+    subAppId  String?
+    subApp    SubApp?  @relation(fields: [subAppId], references: [id], onDelete: Cascade)
     channel   String
     params    Json
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    @@unique([subAppId, channel])
+    @@unique([appId, subAppId, channel])
 }
 
 model Order {
