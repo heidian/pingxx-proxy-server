@@ -46,6 +46,7 @@ pub async fn create_refund(
             Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
         }
         PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
+        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let refund_extra = RefundExtra {

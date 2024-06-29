@@ -75,6 +75,8 @@ mod channel {
         AlipayWap,
         #[serde(rename = "wx_pub")]
         WxPub,
+        #[serde(rename = "wx_lite")]
+        WxLite,
     }
 
     impl FromStr for PaymentChannel {

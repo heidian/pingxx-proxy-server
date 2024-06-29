@@ -63,6 +63,7 @@ pub async fn create_charge(
             Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
         }
         PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
+        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let credential_object = handler

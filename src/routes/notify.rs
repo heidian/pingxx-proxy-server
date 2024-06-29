@@ -71,6 +71,7 @@ async fn process_charge_notify(
             Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
         }
         PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
+        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let charge_status = handler.process_charge_notify(payload)?;
@@ -107,6 +108,9 @@ async fn process_charge_notify(
             Ok("success".to_string())
         }
         PaymentChannel::WxPub => {
+            Ok("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>".to_string())
+        }
+        PaymentChannel::WxLite => {
             Ok("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>".to_string())
         }
     }
@@ -165,6 +169,7 @@ async fn process_refund_notify(
             Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
         }
         PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
+        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let refund_status = handler.process_refund_notify(payload)?;
@@ -212,6 +217,9 @@ async fn process_refund_notify(
             Ok("success".to_string())
         }
         PaymentChannel::WxPub => {
+            Ok("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>".to_string())
+        }
+        PaymentChannel::WxLite => {
             Ok("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>".to_string())
         }
     }
