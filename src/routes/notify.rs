@@ -1,6 +1,6 @@
-use super::{charge::ChargeResponsePayload, order::OrderResponsePayload};
 use crate::core::{
-    ChannelHandler, ChargeError, ChargeStatus, PaymentChannel, RefundError, RefundStatus,
+    ChannelHandler, ChargeError, ChargeResponse, ChargeStatus, OrderResponse, PaymentChannel,
+    RefundError, RefundStatus,
 };
 use crate::{alipay, weixin};
 use serde_json::json;
@@ -13,19 +13,22 @@ async fn send_charge_webhook(
     charges: &Vec<crate::prisma::charge::Data>,
     charge: &crate::prisma::charge::Data,
 ) -> Result<(), ()> {
-    let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
+    let order_response: OrderResponse = (
+        order.to_owned(),
+        charges.to_owned(),
+        app.to_owned(),
+        sub_app.to_owned(),
+    )
+        .into();
+    // let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
     let mut event_data = serde_json::to_value(order_response).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);
     })?;
 
-    event_data["charge_essentials"] = ChargeResponsePayload::new(&charge)
-        .map_err(|e| {
-            tracing::error!("{:?}", e);
-        })?
-        .to_json()
-        .map_err(|e| {
-            tracing::error!("error serializing charge essentials: {:?}", e);
-        })?;
+    let charge_response: ChargeResponse = charge.to_owned().into();
+    event_data["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
+        tracing::error!("error serializing charge essentials: {:?}", e);
+    })?;
 
     let event_payload = json!({
         "id": crate::utils::generate_id("evt_"),

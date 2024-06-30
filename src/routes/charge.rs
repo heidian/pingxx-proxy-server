@@ -1,49 +1,13 @@
-use super::order::OrderResponsePayload;
-use crate::core::{ChannelHandler, ChargeError, ChargeExtra, PaymentChannel};
-use crate::prisma::charge;
+use crate::core::{ChannelHandler, ChargeError, ChargeExtra, PaymentChannel, OrderResponse, ChargeResponse};
 use crate::{alipay, weixin};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-use std::str::FromStr;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateChargeRequestPayload {
     pub charge_amount: i32,
     pub channel: PaymentChannel,
     pub extra: ChargeExtra,
-}
-
-#[derive(Serialize, Debug)]
-pub struct ChargeResponsePayload {
-    pub id: String,
-    pub object: String,
-    pub channel: PaymentChannel,
-    pub amount: i32,
-    pub extra: serde_json::Value,
-    pub credential: serde_json::Value,
-}
-
-impl ChargeResponsePayload {
-    pub fn new(charge: &charge::Data) -> Result<Self, ChargeError> {
-        let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
-            ChargeError::InternalError(format!("error parsing charge channel: {:?}", e))
-        })?;
-        Ok(Self {
-            id: charge.id.clone(),
-            object: "charge".to_string(),
-            channel,
-            amount: charge.amount,
-            extra: charge.extra.clone(),
-            credential: charge.credential.clone(),
-        })
-    }
-
-    pub fn to_json(&self) -> Result<serde_json::Value, ChargeError> {
-        let value = serde_json::to_value(self).map_err(|e| {
-            ChargeError::InternalError(format!("error serializing charge: {:?}", e))
-        })?;
-        Ok(value)
-    }
 }
 
 pub async fn create_charge(
@@ -111,12 +75,21 @@ pub async fn create_charge(
     // 重新 load 一下 order 数据，因为 order.charges 已经更新
     let (order, charges, _, _) =
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
-    let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
+    let order_response: OrderResponse = (
+        order.to_owned(),
+        charges.to_owned(),
+        app.to_owned(),
+        sub_app.to_owned(),
+    )
+        .into();
     let mut result = serde_json::to_value(order_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;
 
-    result["charge_essentials"] = ChargeResponsePayload::new(&charge)?.to_json()?;
+    let charge_response: ChargeResponse = charge.into();
+    result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
+        ChargeError::InternalError(format!("error serializing charge: {:?}", e))
+    })?;
 
     Ok(result)
 }
