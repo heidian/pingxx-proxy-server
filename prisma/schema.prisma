@@ -44,12 +44,13 @@ model ChannelParams {
 }
 
 model Order {
-    id                String   @id
-    appId             String
-    app               App      @relation(fields: [appId], references: [id], onDelete: Cascade)
-    subAppId          String
-    subApp            SubApp   @relation(fields: [subAppId], references: [id], onDelete: Cascade)
-    uid               String
+    id       String @id
+    appId    String
+    app      App    @relation(fields: [appId], references: [id], onDelete: Cascade)
+    subAppId String
+    subApp   SubApp @relation(fields: [subAppId], references: [id], onDelete: Cascade)
+    uid      String
+
     merchant_order_no String
     status            String
     paid              Boolean
@@ -61,44 +62,59 @@ model Order {
     subject           String
     body              String
     currency          String
-    time_paid         Int?
-    time_expire       Int
-    metadata          Json
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
-    charges           Charge[]
-    refunds           Refund[]
+
+    time_paid   Int?
+    time_expire Int
+    metadata    Json
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    charges     Charge[]
+    refunds     Refund[]
 }
 
 model Charge {
-    id           String   @id
-    orderId      String
-    order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-    channel      String
-    amount       Int
-    extra        Json
-    credential   Json
+    id      String @id
+    orderId String
+    order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+    channel String
+
+    merchant_order_no String
+    paid              Boolean
+    amount            Int
+    client_ip         String
+    subject           String
+    body              String
+    currency          String
+
+    extra        Json // 渠道发起支付所需的额外信息和支付成功后渠道返回的额外信息
+    credential   Json // 前端调起支付所需的参数
     failure_code String?
-    failure_msg  String?  @db.Text
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-    refunds      Refund[]
+    failure_msg  String? @db.Text
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    refunds   Refund[]
 }
 
 model Refund {
-    id           String   @id
-    chargeId     String
-    charge       Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
-    orderId      String
-    order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-    amount       Int
-    status       String
-    description  String
-    extra        Json
+    id       String @id
+    chargeId String
+    charge   Charge @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+    orderId  String
+    order    Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+    merchant_order_no String
+    status            String
+    amount            Int
+    description       String
+
+    extra        Json // 渠道发起退款所需的额外信息和退款成功后渠道返回的额外信息
     failure_code String?
-    failure_msg  String?  @db.Text
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
+    failure_msg  String? @db.Text
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 model ChargeNotifyHistory {
