@@ -59,7 +59,7 @@ async fn process_charge_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let (charge, order, app, sub_app) =
+    let (mut charge, mut order, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
@@ -80,8 +80,17 @@ async fn process_charge_notify(
     let charge_status = handler.process_charge_notify(payload)?;
 
     if charge_status == ChargeStatus::Success {
+        charge = prisma_client
+            .charge()
+            .update(
+                crate::prisma::charge::id::equals(charge_id.to_string()),
+                vec![crate::prisma::charge::paid::set(true)],
+            )
+            .exec()
+            .await
+            .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
         // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
-        prisma_client
+        order = prisma_client
             .order()
             .update(
                 crate::prisma::order::id::equals(order.id.clone()),

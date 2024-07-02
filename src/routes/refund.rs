@@ -1,4 +1,7 @@
-use crate::core::{ChannelHandler, PaymentChannel, RefundError, RefundExtra, RefundStatus};
+use crate::core::{
+    ChannelHandler, ChannelRefundExtra, ChannelRefundRequest, PaymentChannel, RefundError,
+    RefundStatus,
+};
 use crate::{alipay, weixin};
 use serde::Deserialize;
 use serde_json::json;
@@ -6,9 +9,7 @@ use std::str::FromStr;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateRefundRequestPayload {
-    #[serde(rename = "charge")]
     pub charge_id: String,
-    #[serde(rename = "charge_amount")]
     pub refund_amount: i32,
     pub description: String,
     pub funding_source: Option<String>, // 微信退款专用 unsettled_funds | recharge_funds
@@ -20,6 +21,7 @@ pub async fn create_refund(
     refund_req_payload: CreateRefundRequestPayload,
 ) -> Result<serde_json::Value, RefundError> {
     let refund_id = crate::utils::generate_id("re_");
+    let merchant_order_no = refund_id[3..].to_string();
 
     let charge_id = &refund_req_payload.charge_id.clone();
     let (charge, order, _app, sub_app) =
@@ -49,18 +51,19 @@ pub async fn create_refund(
         PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
-    let refund_extra = RefundExtra {
-        description: refund_req_payload.description.clone(),
-        funding_source: refund_req_payload.funding_source.clone(),
-    };
-
     let refund_result = handler
         .create_refund(
-            &order,
-            &charge,
-            &refund_id,
-            refund_req_payload.refund_amount,
-            &refund_extra,
+            &ChannelRefundRequest {
+                charge_id: &charge.id,
+                charge_amount: charge.amount,
+                refund_id: &refund_id,
+                refund_amount: refund_req_payload.refund_amount,
+                merchant_order_no: &merchant_order_no,
+                description: &refund_req_payload.description,
+                extra: &ChannelRefundExtra {
+                    funding_source: refund_req_payload.funding_source,
+                },
+            },
         )
         .await?;
 
@@ -70,8 +73,9 @@ pub async fn create_refund(
             refund_id.clone(),
             crate::prisma::charge::id::equals(charge_id.clone()),
             crate::prisma::order::id::equals(order_id.clone()),
-            refund_result.amount,
+            merchant_order_no.clone(),
             refund_result.status.to_string(),
+            refund_result.amount,
             refund_result.description,
             refund_result.extra,
             vec![

@@ -8,31 +8,35 @@ use std::str::FromStr;
 pub trait ChannelHandler {
     async fn create_credential(
         &self,
-        order: &crate::prisma::order::Data,
-        charge_id: &str,
-        charge_amount: i32,
-        payload: &ChargeExtra,
+        request: &ChannelChargeRequest,
     ) -> Result<serde_json::Value, ChargeError>;
 
     fn process_charge_notify(&self, payload: &str) -> Result<ChargeStatus, ChargeError>;
 
     async fn create_refund(
         &self,
-        order: &crate::prisma::order::Data,
-        charge: &crate::prisma::charge::Data,
-        refund_id: &str,
-        refund_amount: i32,
-        payload: &RefundExtra,
+        request: &ChannelRefundRequest,
     ) -> Result<RefundResult, RefundError>;
 
     fn process_refund_notify(&self, payload: &str) -> Result<RefundStatus, RefundError>;
+}
+
+pub struct ChannelChargeRequest<'a> {
+    pub charge_id: &'a str,
+    pub charge_amount: i32,
+    pub merchant_order_no: &'a str,
+    pub client_ip: &'a str,
+    pub time_expire: i32, // 过期时间 timestamp 精确到秒
+    pub subject: &'a str,
+    pub body: &'a str,
+    pub extra: &'a ChannelChargeExtra,
 }
 
 /**
  * 请求支付时渠道相关的额外参数
  */
 #[derive(Deserialize, Serialize, Debug)]
-pub struct ChargeExtra {
+pub struct ChannelChargeExtra {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -47,12 +51,21 @@ pub enum ChargeStatus {
     Fail,
 }
 
+pub struct ChannelRefundRequest<'a> {
+    pub charge_id: &'a str,
+    pub charge_amount: i32,
+    pub refund_id: &'a str,
+    pub refund_amount: i32,
+    pub merchant_order_no: &'a str,
+    pub description: &'a str,
+    pub extra: &'a ChannelRefundExtra,
+}
+
 /**
  * 请求退款时渠道相关的额外参数
  */
 #[derive(Deserialize, Serialize, Debug)]
-pub struct RefundExtra {
-    pub description: String,
+pub struct ChannelRefundExtra {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub funding_source: Option<String>, // 微信退款专用 unsettled_funds | recharge_funds
 }

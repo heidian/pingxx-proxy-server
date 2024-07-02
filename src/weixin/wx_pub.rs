@@ -1,10 +1,12 @@
 use super::{
-    v2api::{self, V2ApiNotifyPayload, V2ApiRefundNotifyPayload, V2ApiRefundPayload, V2ApiRequestPayload},
+    v2api::{
+        self, V2ApiNotifyPayload, V2ApiRefundNotifyPayload, V2ApiRefundPayload, V2ApiRequestPayload,
+    },
     WeixinError, WxPubConfig,
 };
 use crate::core::{
-    ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
-    RefundExtra, RefundResult, RefundStatus,
+    ChannelChargeRequest, ChannelHandler, ChannelRefundRequest, ChargeError, ChargeStatus,
+    PaymentChannel, RefundError, RefundResult, RefundStatus,
 };
 use async_trait::async_trait;
 use serde_json::json;
@@ -37,13 +39,19 @@ impl WxPub {
 impl ChannelHandler for WxPub {
     async fn create_credential(
         &self,
-        order: &crate::prisma::order::Data,
-        charge_id: &str,
-        charge_amount: i32,
-        payload: &ChargeExtra,
+        &ChannelChargeRequest {
+            charge_id,
+            charge_amount,
+            merchant_order_no,
+            client_ip,
+            time_expire,
+            subject,
+            body,
+            extra,
+        }: &ChannelChargeRequest,
     ) -> Result<serde_json::Value, ChargeError> {
         let config = &self.config;
-        let open_id = match payload.open_id.as_ref() {
+        let open_id = match extra.open_id.as_ref() {
             Some(open_id) => open_id.to_string(),
             None => {
                 return Err(ChargeError::MalformedRequest(
@@ -56,12 +64,12 @@ impl ChannelHandler for WxPub {
             &config.wx_pub_app_id,
             &config.wx_pub_mch_id,
             &open_id,
-            &order.client_ip,
-            &order.merchant_order_no,
+            client_ip,
+            merchant_order_no,
             charge_amount,
-            order.time_expire,
-            &order.subject,
-            &order.body,
+            time_expire,
+            subject,
+            body,
         )?;
 
         v2_api_payload.sign_md5(&config.wx_pub_key)?;
@@ -98,31 +106,35 @@ impl ChannelHandler for WxPub {
 
     async fn create_refund(
         &self,
-        order: &crate::prisma::order::Data,
-        charge: &crate::prisma::charge::Data,
-        refund_id: &str,
-        refund_amount: i32,
-        payload: &RefundExtra,
+        &ChannelRefundRequest {
+            charge_id,
+            charge_amount,
+            refund_id,
+            refund_amount,
+            merchant_order_no,
+            description,
+            // extra,
+            ..
+        }: &ChannelRefundRequest,
     ) -> Result<RefundResult, RefundError> {
         let config = &self.config;
         let mut refund_payload = V2ApiRefundPayload::new(
             refund_id,
-            &charge.id,
+            charge_id,
             &config.wx_pub_app_id,
             &config.wx_pub_mch_id,
-            &order.merchant_order_no,
-            charge.amount,
+            merchant_order_no,
+            charge_amount,
             refund_amount,
-            &payload.description,
+            description,
         )?;
         refund_payload.sign_md5(&config.wx_pub_key)?;
-        let refund_response = refund_payload.send_request(
-            &config.wx_pub_client_cert,
-            &config.wx_pub_client_key,
-        ).await?;
+        let refund_response = refund_payload
+            .send_request(&config.wx_pub_client_cert, &config.wx_pub_client_key)
+            .await?;
         let mut result = RefundResult {
             amount: refund_amount,
-            description: payload.description.clone(),
+            description: description.to_string(),
             extra: refund_response.clone(),
             ..Default::default()
         };

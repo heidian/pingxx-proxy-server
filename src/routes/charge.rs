@@ -1,4 +1,7 @@
-use crate::core::{ChannelHandler, ChargeError, ChargeExtra, PaymentChannel, OrderResponse, ChargeResponse};
+use crate::core::{
+    ChannelChargeExtra, ChannelChargeRequest, ChannelHandler, ChargeError, ChargeResponse,
+    OrderResponse, PaymentChannel,
+};
 use crate::{alipay, weixin};
 use serde::Deserialize;
 use serde_json::json;
@@ -7,7 +10,7 @@ use serde_json::json;
 pub struct CreateChargeRequestPayload {
     pub charge_amount: i32,
     pub channel: PaymentChannel,
-    pub extra: ChargeExtra,
+    pub extra: ChannelChargeExtra,
 }
 
 pub async fn create_charge(
@@ -17,7 +20,8 @@ pub async fn create_charge(
 ) -> Result<serde_json::Value, ChargeError> {
     let charge_id = crate::utils::generate_id("ch_");
 
-    let (order, _charges, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
+    let (order, _charges, app, sub_app) =
+        crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
 
     let handler: Box<dyn ChannelHandler + Send> = match charge_req_payload.channel {
         PaymentChannel::AlipayPcDirect => {
@@ -31,12 +35,16 @@ pub async fn create_charge(
     };
 
     let credential_object = handler
-        .create_credential(
-            &order,
-            &charge_id,
-            charge_req_payload.charge_amount,
-            &charge_req_payload.extra,
-        )
+        .create_credential(&ChannelChargeRequest {
+            charge_id: &charge_id,
+            charge_amount: charge_req_payload.charge_amount,
+            merchant_order_no: &order.merchant_order_no,
+            client_ip: &order.client_ip,
+            time_expire: order.time_expire,
+            subject: &order.subject,
+            body: &order.body,
+            extra: &charge_req_payload.extra,
+        })
         .await?;
 
     let credential = {
@@ -63,7 +71,13 @@ pub async fn create_charge(
             charge_id.clone(),
             crate::prisma::order::id::equals(order_id.clone()),
             charge_req_payload.channel.to_string(),
+            order.merchant_order_no.clone(),
+            false,
             charge_req_payload.charge_amount,
+            order.client_ip.clone(),
+            order.subject,
+            order.body,
+            order.currency,
             extra,
             credential,
             vec![],
@@ -87,9 +101,8 @@ pub async fn create_charge(
     })?;
 
     let charge_response: ChargeResponse = charge.into();
-    result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
-        ChargeError::InternalError(format!("error serializing charge: {:?}", e))
-    })?;
+    result["charge_essentials"] = serde_json::to_value(charge_response)
+        .map_err(|e| ChargeError::InternalError(format!("error serializing charge: {:?}", e)))?;
 
     Ok(result)
 }

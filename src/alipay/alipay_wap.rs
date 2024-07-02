@@ -4,8 +4,8 @@ use super::{
     AlipayApiType, AlipayError, AlipayWapConfig,
 };
 use crate::core::{
-    ChannelHandler, ChargeError, ChargeExtra, ChargeStatus, PaymentChannel, RefundError,
-    RefundExtra, RefundResult, RefundStatus,
+    ChannelChargeRequest, ChannelHandler, ChannelRefundRequest, ChargeError, ChargeStatus,
+    PaymentChannel, RefundError, RefundResult, RefundStatus,
 };
 use async_trait::async_trait;
 
@@ -39,13 +39,19 @@ impl AlipayWap {
 impl ChannelHandler for AlipayWap {
     async fn create_credential(
         &self,
-        order: &crate::prisma::order::Data,
-        charge_id: &str,
-        charge_amount: i32,
-        payload: &ChargeExtra,
+        &ChannelChargeRequest {
+            charge_id,
+            charge_amount,
+            merchant_order_no,
+            time_expire,
+            subject,
+            body,
+            extra,
+            ..
+        }: &ChannelChargeRequest,
     ) -> Result<serde_json::Value, ChargeError> {
         let config = &self.config;
-        let return_url = match payload.success_url.as_ref() {
+        let return_url = match extra.success_url.as_ref() {
             Some(url) => url.to_string(),
             None => {
                 return Err(ChargeError::MalformedRequest(
@@ -60,11 +66,11 @@ impl ChannelHandler for AlipayWap {
                     "alipay.wap.create.direct.pay.by.user",
                     &config.alipay_pid,
                     &return_url,
-                    &order.merchant_order_no,
+                    merchant_order_no,
                     charge_amount,
-                    order.time_expire,
-                    &order.subject,
-                    &order.body,
+                    time_expire,
+                    subject,
+                    body,
                 )?;
                 mapi_request_payload.sign_rsa(&config.alipay_mer_wap_private_key)?;
                 serde_json::to_value(mapi_request_payload)
@@ -76,11 +82,11 @@ impl ChannelHandler for AlipayWap {
                     &config.alipay_app_id,
                     &config.alipay_pid,
                     &return_url,
-                    &order.merchant_order_no,
+                    merchant_order_no,
                     charge_amount,
-                    order.time_expire,
-                    &order.subject,
-                    &order.body,
+                    time_expire,
+                    subject,
+                    body,
                 )?;
                 openapi_request_payload.sign_rsa2(&config.alipay_mer_wap_private_key_rsa2)?;
                 serde_json::to_value(openapi_request_payload)
@@ -118,22 +124,26 @@ impl ChannelHandler for AlipayWap {
 
     async fn create_refund(
         &self,
-        order: &crate::prisma::order::Data,
-        charge: &crate::prisma::charge::Data,
-        refund_id: &str,
-        refund_amount: i32,
-        payload: &RefundExtra,
+        &ChannelRefundRequest {
+            charge_id,
+            refund_id,
+            refund_amount,
+            merchant_order_no,
+            description,
+            // extra,
+            ..
+        }: &ChannelRefundRequest,
     ) -> Result<RefundResult, RefundError> {
         let config = &self.config;
         let result = match config.alipay_version {
             AlipayApiType::MAPI => {
                 let mut refund_payload = MapiRefundPayload::new(
                     refund_id,
-                    &charge.id,
+                    charge_id,
                     &config.alipay_pid,
-                    &order.merchant_order_no,
+                    merchant_order_no,
                     refund_amount,
-                    &payload.description,
+                    description,
                 )?;
                 refund_payload.sign_rsa(&config.alipay_mer_wap_private_key)?;
                 // refund_payload.sign_md5(&config.alipay_security_key)?;
@@ -141,7 +151,7 @@ impl ChannelHandler for AlipayWap {
                 let failure_msg = format!("需要打开地址进行下一步退款操作: {}", refund_url);
                 RefundResult {
                     amount: refund_amount,
-                    description: payload.description.clone(),
+                    description: description.to_string(),
                     failure_msg: Some(failure_msg),
                     ..Default::default()
                 }
@@ -149,15 +159,15 @@ impl ChannelHandler for AlipayWap {
             AlipayApiType::OPENAPI => {
                 let mut refund_payload = OpenApiRefundPayload::new(
                     &config.alipay_app_id,
-                    &order.merchant_order_no,
+                    merchant_order_no,
                     refund_amount,
-                    &payload.description,
+                    description,
                 )?;
                 refund_payload.sign_rsa2(&config.alipay_mer_wap_private_key_rsa2)?;
                 let refund_response = refund_payload.send_request().await?;
                 let mut result = RefundResult {
                     amount: refund_amount,
-                    description: payload.description.clone(),
+                    description: description.to_string(),
                     extra: refund_response.clone(),
                     ..Default::default()
                 };
