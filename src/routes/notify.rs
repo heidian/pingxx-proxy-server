@@ -56,21 +56,25 @@ async fn process_charge_notify(
     payload: &str,
 ) -> Result<String, ChargeError> {
     let (mut charge, mut order, app, sub_app) =
-        crate::utils::load_charge_with_order_from_db(&prisma_client, charge_id).await?;
+        crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
         ChargeError::InternalError(format!("error parsing charge channel: {:?}", e))
     })?;
 
     let handler: Box<dyn ChannelHandler + Send> = match channel {
-        PaymentChannel::AlipayPcDirect => {
-            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::AlipayPcDirect => Box::new(
+            alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::AlipayWap => Box::new(
+            alipay::AlipayWap::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::WxPub => {
+            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::AlipayWap => {
-            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::WxLite => {
+            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
-        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let charge_status = handler.process_charge_notify(payload)?;
@@ -156,7 +160,7 @@ async fn process_refund_notify(
     payload: &str,
 ) -> Result<String, RefundError> {
     let (charge, mut order, app, sub_app) =
-        crate::utils::load_charge_with_order_from_db(&prisma_client, charge_id).await?;
+        crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let mut refund = prisma_client
         .refund()
@@ -170,14 +174,18 @@ async fn process_refund_notify(
         .map_err(|e| RefundError::Unexpected(format!("error parsing charge channel: {:?}", e)))?;
 
     let handler: Box<dyn ChannelHandler + Send> = match channel {
-        PaymentChannel::AlipayPcDirect => {
-            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::AlipayPcDirect => Box::new(
+            alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::AlipayWap => Box::new(
+            alipay::AlipayWap::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::WxPub => {
+            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::AlipayWap => {
-            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::WxLite => {
+            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
-        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let refund_status = handler.process_refund_notify(payload)?;

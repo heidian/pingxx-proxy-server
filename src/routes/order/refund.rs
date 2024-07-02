@@ -24,8 +24,8 @@ pub async fn create_refund(
     let merchant_order_no = refund_id[3..].to_string();
 
     let charge_id = &refund_req_payload.charge_id.clone();
-    let (charge, order, _app, sub_app) =
-        crate::utils::load_charge_with_order_from_db(&prisma_client, &charge_id).await?;
+    let (charge, order, app, sub_app) =
+        crate::utils::load_charge_from_db(&prisma_client, &charge_id).await?;
     // let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
     if order.id != order_id {
         return Err(RefundError::BadRequest(format!(
@@ -41,14 +41,18 @@ pub async fn create_refund(
         ))
     })?;
     let handler: Box<dyn ChannelHandler + Send> = match channel {
-        PaymentChannel::AlipayPcDirect => {
-            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::AlipayPcDirect => Box::new(
+            alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::AlipayWap => Box::new(
+            alipay::AlipayWap::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::WxPub => {
+            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::AlipayWap => {
-            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::WxLite => {
+            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
-        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let refund_result = handler

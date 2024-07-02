@@ -4,9 +4,8 @@ use super::{
     AlipayApiType, AlipayError, AlipayPcDirectConfig,
 };
 use crate::core::{
-    ChannelChargeRequest, ChannelHandler,
-    ChannelRefundRequest, ChargeError, ChargeStatus, PaymentChannel, RefundError, RefundResult,
-    RefundStatus,
+    ChannelChargeRequest, ChannelHandler, ChannelRefundRequest, ChargeError, ChargeStatus,
+    PaymentChannel, RefundError, RefundResult, RefundStatus,
 };
 use async_trait::async_trait;
 
@@ -17,11 +16,13 @@ pub struct AlipayPcDirect {
 impl AlipayPcDirect {
     pub async fn new(
         prisma_client: &crate::prisma::PrismaClient,
-        sub_app_id: &str,
+        app_id: Option<&str>,
+        sub_app_id: Option<&str>,
     ) -> Result<Self, AlipayError> {
         let channel_params = crate::utils::load_channel_params_from_db(
             &prisma_client,
-            &sub_app_id,
+            app_id,
+            sub_app_id,
             &PaymentChannel::AlipayPcDirect.to_string(),
         )
         .await

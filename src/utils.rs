@@ -15,7 +15,10 @@ pub fn notify_url(charge_id: &str) -> String {
 
 pub fn refund_notify_url(charge_id: &str, refund_id: &str) -> String {
     let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
-    format!("{}/notify/charges/{}/refunds/{}", charge_notify_origin, charge_id, refund_id)
+    format!(
+        "{}/notify/charges/{}/refunds/{}",
+        charge_notify_origin, charge_id, refund_id
+    )
 }
 
 mod db {
@@ -80,7 +83,7 @@ mod db {
         Ok((order, charges, app, sub_app))
     }
 
-    pub async fn load_charge_with_order_from_db(
+    pub async fn load_charge_from_db(
         prisma_client: &crate::prisma::PrismaClient,
         charge_id: &str,
     ) -> Result<
@@ -103,11 +106,15 @@ mod db {
             .exec()
             .await?
             .ok_or_else(|| DBError::DoesNotExist(format!("charge {}", charge_id)))?;
-        let order = charge.order.clone().ok_or_else(|| {
-            DBError::SQLFailed(format!("failed fetch order on charge {}", &charge_id))
-        })?.ok_or_else(|| {
-            DBError::DoesNotExist(format!("order not found on charge {}", &charge_id))
-        })?;
+        let order = charge
+            .order
+            .clone()
+            .ok_or_else(|| {
+                DBError::SQLFailed(format!("failed fetch order on charge {}", &charge_id))
+            })?
+            .ok_or_else(|| {
+                DBError::DoesNotExist(format!("order not found on charge {}", &charge_id))
+            })?;
         let app = order.app.clone().ok_or_else(|| {
             DBError::SQLFailed(format!("failed fetch app on charge {}", &charge_id))
         })?;
@@ -119,15 +126,26 @@ mod db {
 
     pub async fn load_channel_params_from_db(
         prisma_client: &crate::prisma::PrismaClient,
-        sub_app_id: &str,
+        app_id: Option<&str>,
+        sub_app_id: Option<&str>,
         channel: &str,
     ) -> Result<crate::prisma::channel_params::Data, DBError> {
+        let mut where_params = vec![crate::prisma::channel_params::channel::equals(
+            channel.to_string(),
+        )];
+        if let Some(app_id) = app_id {
+            where_params.push(crate::prisma::channel_params::app_id::equals(Some(
+                app_id.to_string(),
+            )));
+        }
+        if let Some(sub_app_id) = sub_app_id {
+            where_params.push(crate::prisma::channel_params::sub_app_id::equals(Some(
+                sub_app_id.to_string(),
+            )));
+        }
         let channel_params = prisma_client
             .channel_params()
-            .find_first(vec![
-                crate::prisma::channel_params::sub_app_id::equals(Some(sub_app_id.to_string())),
-                crate::prisma::channel_params::channel::equals(channel.to_string()),
-            ])
+            .find_first(where_params)
             // .find_unique(crate::prisma::channel_params::sub_app_id_channel(
             //     sub_app_id.to_string(),
             //     channel.to_string(),
@@ -136,8 +154,8 @@ mod db {
             .await?
             .ok_or_else(|| {
                 DBError::DoesNotExist(format!(
-                    "channel_params {:?} for sub app {}",
-                    channel, sub_app_id
+                    "channel_params {:?} for app {:?} / sub app {:?}",
+                    channel, app_id, sub_app_id
                 ))
             })?;
         Ok(channel_params)

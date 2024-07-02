@@ -19,11 +19,13 @@ pub struct WxLite {
 impl WxLite {
     pub async fn new(
         prisma_client: &crate::prisma::PrismaClient,
-        sub_app_id: &str,
+        app_id: Option<&str>,
+        sub_app_id: Option<&str>,
     ) -> Result<Self, WeixinError> {
         let channel_params = crate::utils::load_channel_params_from_db(
             &prisma_client,
-            &sub_app_id,
+            app_id,
+            sub_app_id,
             &PaymentChannel::WxLite.to_string(),
         )
         .await

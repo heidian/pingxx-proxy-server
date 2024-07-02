@@ -24,14 +24,18 @@ pub async fn create_charge(
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
 
     let handler: Box<dyn ChannelHandler + Send> = match charge_req_payload.channel {
-        PaymentChannel::AlipayPcDirect => {
-            Box::new(alipay::AlipayPcDirect::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::AlipayPcDirect => Box::new(
+            alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::AlipayWap => Box::new(
+            alipay::AlipayWap::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
+        ),
+        PaymentChannel::WxPub => {
+            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::AlipayWap => {
-            Box::new(alipay::AlipayWap::new(&prisma_client, &sub_app.id).await?)
+        PaymentChannel::WxLite => {
+            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
         }
-        PaymentChannel::WxPub => Box::new(weixin::WxPub::new(&prisma_client, &sub_app.id).await?),
-        PaymentChannel::WxLite => Box::new(weixin::WxLite::new(&prisma_client, &sub_app.id).await?),
     };
 
     let credential_object = handler
