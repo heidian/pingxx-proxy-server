@@ -73,9 +73,9 @@ model Order {
 }
 
 model Charge {
-    id      String @id
-    orderId String
-    order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    id      String  @id
+    orderId String?
+    order   Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
     channel String
 
@@ -98,11 +98,11 @@ model Charge {
 }
 
 model Refund {
-    id       String @id
+    id       String  @id
     chargeId String
-    charge   Charge @relation(fields: [chargeId], references: [id], onDelete: Cascade)
-    orderId  String
-    order    Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    charge   Charge  @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+    orderId  String?
+    order    Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
     merchant_order_no String
     status            String
