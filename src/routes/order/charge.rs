@@ -69,6 +69,7 @@ pub async fn create_charge(
         .charge()
         .create(
             charge_id.clone(),
+            crate::prisma::app::id::equals(order.app_id.clone()),
             charge_req_payload.channel.to_string(),
             order.merchant_order_no.clone(),
             false,

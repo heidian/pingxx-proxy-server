@@ -69,6 +69,7 @@ pub async fn create_refund(
         .refund()
         .create(
             refund_id.clone(),
+            crate::prisma::app::id::equals(order.app_id.clone()),
             crate::prisma::charge::id::equals(charge_id.clone()),
             merchant_order_no.clone(),
             refund_result.status.to_string(),
@@ -146,11 +147,14 @@ pub async fn retrieve_refund(
         let charge = refund.charge.ok_or_else(|| {
             RefundError::Unexpected(format!("failed fetch charge on refund {}", &refund_id))
         })?;
-        let order = refund.order.ok_or_else(|| {
-            RefundError::Unexpected(format!("failed fetch order on refund {}", &refund_id))
-        })?.ok_or_else(|| {
-            RefundError::Unexpected(format!("order not found on refund {}", &refund_id))
-        })?;
+        let order = refund
+            .order
+            .ok_or_else(|| {
+                RefundError::Unexpected(format!("failed fetch order on refund {}", &refund_id))
+            })?
+            .ok_or_else(|| {
+                RefundError::Unexpected(format!("order not found on refund {}", &refund_id))
+            })?;
         (*charge, *order)
     };
 
