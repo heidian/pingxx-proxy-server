@@ -25,7 +25,7 @@ pub async fn create_refund(
 
     let charge_id = &refund_req_payload.charge_id.clone();
     let (charge, order, _app, sub_app) =
-        crate::utils::load_charge_from_db(&prisma_client, &charge_id).await?;
+        crate::utils::load_charge_with_order_from_db(&prisma_client, &charge_id).await?;
     // let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
     if order.id != order_id {
         return Err(RefundError::BadRequest(format!(
@@ -52,19 +52,17 @@ pub async fn create_refund(
     };
 
     let refund_result = handler
-        .create_refund(
-            &ChannelRefundRequest {
-                charge_id: &charge.id,
-                charge_amount: charge.amount,
-                refund_id: &refund_id,
-                refund_amount: refund_req_payload.refund_amount,
-                merchant_order_no: &merchant_order_no,
-                description: &refund_req_payload.description,
-                extra: &ChannelRefundExtra {
-                    funding_source: refund_req_payload.funding_source,
-                },
+        .create_refund(&ChannelRefundRequest {
+            charge_id: &charge.id,
+            charge_amount: charge.amount,
+            refund_id: &refund_id,
+            refund_amount: refund_req_payload.refund_amount,
+            merchant_order_no: &merchant_order_no,
+            description: &refund_req_payload.description,
+            extra: &ChannelRefundExtra {
+                funding_source: refund_req_payload.funding_source,
             },
-        )
+        })
         .await?;
 
     let refund = prisma_client
@@ -72,13 +70,13 @@ pub async fn create_refund(
         .create(
             refund_id.clone(),
             crate::prisma::charge::id::equals(charge_id.clone()),
-            crate::prisma::order::id::equals(order_id.clone()),
             merchant_order_no.clone(),
             refund_result.status.to_string(),
             refund_result.amount,
             refund_result.description,
             refund_result.extra,
             vec![
+                crate::prisma::refund::order_id::set(Some(order_id.clone())),
                 crate::prisma::refund::failure_code::set(refund_result.failure_code),
                 crate::prisma::refund::failure_msg::set(refund_result.failure_msg),
             ],
@@ -142,14 +140,16 @@ pub async fn retrieve_refund(
         .exec()
         .await
         .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?
-        .ok_or_else(|| RefundError::BadRequest(format!("refund {} not found", refund_id)))?;
+        .ok_or_else(|| RefundError::BadRequest(format!("refund {} not found", &refund_id)))?;
     let (charge, order) = {
         let refund = refund.clone();
         let charge = refund.charge.ok_or_else(|| {
-            RefundError::Unexpected(format!("failed fetch charge on refund {}", refund_id))
+            RefundError::Unexpected(format!("failed fetch charge on refund {}", &refund_id))
         })?;
         let order = refund.order.ok_or_else(|| {
-            RefundError::Unexpected(format!("failed fetch order on refund {}", refund_id))
+            RefundError::Unexpected(format!("failed fetch order on refund {}", &refund_id))
+        })?.ok_or_else(|| {
+            RefundError::Unexpected(format!("order not found on refund {}", &refund_id))
         })?;
         (*charge, *order)
     };

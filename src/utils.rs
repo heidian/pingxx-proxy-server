@@ -80,7 +80,7 @@ mod db {
         Ok((order, charges, app, sub_app))
     }
 
-    pub async fn load_charge_from_db(
+    pub async fn load_charge_with_order_from_db(
         prisma_client: &crate::prisma::PrismaClient,
         charge_id: &str,
     ) -> Result<
@@ -105,6 +105,8 @@ mod db {
             .ok_or_else(|| DBError::DoesNotExist(format!("charge {}", charge_id)))?;
         let order = charge.order.clone().ok_or_else(|| {
             DBError::SQLFailed(format!("failed fetch order on charge {}", &charge_id))
+        })?.ok_or_else(|| {
+            DBError::DoesNotExist(format!("order not found on charge {}", &charge_id))
         })?;
         let app = order.app.clone().ok_or_else(|| {
             DBError::SQLFailed(format!("failed fetch app on charge {}", &charge_id))

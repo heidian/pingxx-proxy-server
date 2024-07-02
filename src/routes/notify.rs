@@ -56,7 +56,7 @@ async fn process_charge_notify(
     payload: &str,
 ) -> Result<String, ChargeError> {
     let (mut charge, mut order, app, sub_app) =
-        crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
+        crate::utils::load_charge_with_order_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
         ChargeError::InternalError(format!("error parsing charge channel: {:?}", e))
@@ -156,7 +156,7 @@ async fn process_refund_notify(
     payload: &str,
 ) -> Result<String, RefundError> {
     let (charge, mut order, app, sub_app) =
-        crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
+        crate::utils::load_charge_with_order_from_db(&prisma_client, charge_id).await?;
 
     let mut refund = prisma_client
         .refund()

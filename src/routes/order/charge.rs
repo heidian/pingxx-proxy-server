@@ -69,7 +69,6 @@ pub async fn create_charge(
         .charge()
         .create(
             charge_id.clone(),
-            crate::prisma::order::id::equals(order_id.clone()),
             charge_req_payload.channel.to_string(),
             order.merchant_order_no.clone(),
             false,
@@ -80,7 +79,7 @@ pub async fn create_charge(
             order.currency,
             extra,
             credential,
-            vec![],
+            vec![crate::prisma::charge::order_id::set(Some(order_id.clone()))],
         )
         .exec()
         .await
