@@ -1,4 +1,4 @@
-use crate::core::{OrderError, OrderResponse, ChargeResponse};
+use crate::core::{OrderError, OrderResponse};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -51,7 +51,7 @@ pub async fn create_order(
 
     let (order, charges, app, sub_app) =
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
-    let order_response: OrderResponse = (order, charges, app, sub_app).into();
+    let order_response: OrderResponse = (order, None, charges, app, sub_app).into();
     Ok(order_response)
 }
 
@@ -68,15 +68,10 @@ pub async fn retrieve_order(
         .unwrap_or_default()
         .first()
         .cloned();
-    let order_response: OrderResponse = (order, charges, app, sub_app).into();
-    let mut result = serde_json::to_value(order_response).map_err(|e| {
+
+    let order_response: OrderResponse = (order, first_charge, charges, app, sub_app).into();
+    let result = serde_json::to_value(order_response).map_err(|e| {
         OrderError::Unexpected(format!("error serializing order response payload: {:?}", e))
     })?;
-    if let Some(charge) = first_charge {
-        let charge_response: ChargeResponse = charge.to_owned().into();
-        result["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
-            OrderError::Unexpected(format!("error serializing charge essentials: {:?}", e))
-        })?;
-    }
     Ok(result)
 }

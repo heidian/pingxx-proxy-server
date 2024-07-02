@@ -9,7 +9,7 @@ pub struct ListResponse<T: Serialize> {
 }
 
 pub mod order {
-    use super::charge::ChargeResponse;
+    use super::charge::{ChargeResponse, ChargeEssentialsResponse};
     use super::*;
     use crate::prisma::{
         app::Data as AppData, charge::Data as ChargeData, order::Data as OrderData,
@@ -39,24 +39,18 @@ pub mod order {
         pub time_paid: Option<i32>,
         pub time_expire: i32,
         pub metadata: serde_json::Value,
+        pub charge_essentials: Option<ChargeEssentialsResponse>,
         pub charges: ListResponse<ChargeResponse>,
     }
 
-    type T = (OrderData, Vec<ChargeData>, AppData, SubAppData);
+    type T = (OrderData, Option<ChargeData>, Vec<ChargeData>, AppData, SubAppData);
     impl From<T> for OrderResponse {
-        fn from((order, charges, app, sub_app): T) -> Self {
+        fn from((order, charge, charges, app, sub_app): T) -> Self {
             let charges = {
                 // let empty: Vec<crate::prisma::charge::Data> = vec![];
                 // let charges = order.charges.as_ref().unwrap_or(&empty);
                 let data = charges
                     .iter()
-                    // .filter_map(|charge| {
-                    //     let charge_response: ChargeResponse = charge.to_owned().into();
-                    //     match serde_json::to_value(charge_response) {
-                    //         Ok(res) => Some(res),
-                    //         Err(_) => None,
-                    //     }
-                    // })
                     .map(|charge| {
                         let charge_response: ChargeResponse = charge.to_owned().into();
                         charge_response
@@ -68,6 +62,10 @@ pub mod order {
                     has_more: false,
                     data,
                 }
+            };
+            let charge_essentials = match charge {
+                Some(charge) => Some(charge.into()),
+                None => None,
             };
             Self {
                 id: order.id,
@@ -91,6 +89,7 @@ pub mod order {
                 time_paid: None,
                 time_expire: order.time_expire,
                 metadata: order.metadata,
+                charge_essentials,
                 charges,
             }
         }
@@ -102,25 +101,61 @@ pub mod charge {
     use crate::prisma::charge::Data as ChargeData;
 
     #[derive(Serialize, Debug)]
+    pub struct ChargeEssentialsResponse {
+        pub channel: String,
+        pub extra: serde_json::Value,
+        pub credential: serde_json::Value,
+        pub failure_code: Option<String>,
+        pub failure_msg: Option<String>,
+    }
+
+    impl From<ChargeData> for ChargeEssentialsResponse {
+        fn from(charge: ChargeData) -> Self {
+            Self {
+                channel: charge.channel,
+                extra: charge.extra,
+                credential: charge.credential,
+                failure_code: charge.failure_code,
+                failure_msg: charge.failure_msg,
+            }
+        }
+    }
+
+    #[derive(Serialize, Debug)]
     pub struct ChargeResponse {
         pub id: String,
         pub object: String,
         pub channel: String,
+        pub merchant_order_no: String,
+        pub paid: bool,
         pub amount: i32,
+        pub client_ip: String,
+        pub subject: String,
+        pub body: String,
+        pub currency: String,
         pub extra: serde_json::Value,
         pub credential: serde_json::Value,
+        pub failure_code: Option<String>,
+        pub failure_msg: Option<String>,
     }
 
-    type T = ChargeData;
-    impl From<T> for ChargeResponse {
-        fn from(charge: T) -> Self {
+    impl From<ChargeData> for ChargeResponse {
+        fn from(charge: ChargeData) -> Self {
             Self {
                 id: charge.id,
                 object: "charge".to_string(),
                 channel: charge.channel,
+                merchant_order_no: charge.merchant_order_no,
+                paid: charge.paid,
                 amount: charge.amount,
+                client_ip: charge.client_ip,
+                subject: charge.subject,
+                body: charge.body,
+                currency: charge.currency,
                 extra: charge.extra,
                 credential: charge.credential,
+                failure_code: charge.failure_code,
+                failure_msg: charge.failure_msg,
             }
         }
     }

@@ -1,6 +1,6 @@
 use crate::core::{
-    ChannelChargeExtra, ChannelChargeRequest, ChannelHandler, ChargeError, ChargeResponse,
-    OrderResponse, PaymentChannel,
+    ChannelChargeExtra, ChannelChargeRequest, ChannelHandler, ChargeError, OrderResponse,
+    PaymentChannel,
 };
 use crate::{alipay, weixin};
 use serde::Deserialize;
@@ -91,18 +91,15 @@ pub async fn create_charge(
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
     let order_response: OrderResponse = (
         order.to_owned(),
+        Some(charge),
         charges.to_owned(),
         app.to_owned(),
         sub_app.to_owned(),
     )
         .into();
-    let mut result = serde_json::to_value(order_response).map_err(|e| {
+
+    let result = serde_json::to_value(order_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;
-
-    let charge_response: ChargeResponse = charge.into();
-    result["charge_essentials"] = serde_json::to_value(charge_response)
-        .map_err(|e| ChargeError::InternalError(format!("error serializing charge: {:?}", e)))?;
-
     Ok(result)
 }

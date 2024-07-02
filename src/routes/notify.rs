@@ -1,6 +1,6 @@
 use crate::core::{
-    ChannelHandler, ChargeError, ChargeResponse, ChargeStatus, OrderResponse, PaymentChannel,
-    RefundError, RefundStatus,
+    ChannelHandler, ChargeError, ChargeStatus, OrderResponse, PaymentChannel, RefundError,
+    RefundStatus,
 };
 use crate::{alipay, weixin};
 use serde_json::json;
@@ -15,19 +15,15 @@ async fn send_charge_webhook(
 ) -> Result<(), ()> {
     let order_response: OrderResponse = (
         order.to_owned(),
+        Some(charge.to_owned()),
         charges.to_owned(),
         app.to_owned(),
         sub_app.to_owned(),
     )
         .into();
-    // let order_response = OrderResponsePayload::new(&order, &charges, &app, &sub_app);
-    let mut event_data = serde_json::to_value(order_response).map_err(|e| {
-        tracing::error!("error serializing order response payload: {:?}", e);
-    })?;
 
-    let charge_response: ChargeResponse = charge.to_owned().into();
-    event_data["charge_essentials"] = serde_json::to_value(charge_response).map_err(|e| {
-        tracing::error!("error serializing charge essentials: {:?}", e);
+    let event_data = serde_json::to_value(order_response).map_err(|e| {
+        tracing::error!("error serializing order response payload: {:?}", e);
     })?;
 
     let event_payload = json!({
