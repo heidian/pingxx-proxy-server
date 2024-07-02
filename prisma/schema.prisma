@@ -16,6 +16,8 @@ model App {
     subApps        SubApp[]
     channel_params ChannelParams[]
     orders         Order[]
+    charges        Charge[]
+    refunds        Refund[]
 }
 
 model SubApp {
@@ -74,6 +76,8 @@ model Order {
 
 model Charge {
     id      String  @id
+    appId   String
+    app     App     @relation(fields: [appId], references: [id], onDelete: Cascade)
     orderId String?
     order   Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -99,6 +103,8 @@ model Charge {
 
 model Refund {
     id       String  @id
+    appId    String
+    app      App     @relation(fields: [appId], references: [id], onDelete: Cascade)
     chargeId String
     charge   Charge  @relation(fields: [chargeId], references: [id], onDelete: Cascade)
     orderId  String?
