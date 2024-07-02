@@ -1,3 +1,4 @@
+mod basic;
 mod notify;
 mod order;
 mod prelude;
@@ -113,6 +114,21 @@ pub async fn get_routes() -> Router {
             | async move {
                 tracing::info!(order_id, refund_id, "retrieve_refund");
                 match order::retrieve_refund(&prisma_client, order_id, refund_id).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
+            })
+        })
+        .route("/v1/charges", {
+            let prisma_client = prisma_client.clone();
+            post(|body: String| async move {
+                tracing::info!(body, "create_charge");
+                let charge_req_payload: basic::CreateChargeRequestPayload =
+                    serde_json::from_str(&body).map_err(|e| {
+                        let err_msg = format!("error parsing create_charge request payload: {:?}", e);
+                        (StatusCode::BAD_REQUEST, err_msg).into_response()
+                    })?;
+                match basic::create_charge(&prisma_client, charge_req_payload).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }
