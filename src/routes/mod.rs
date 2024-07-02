@@ -1,8 +1,6 @@
-mod charge;
 mod notify;
 mod order;
 mod prelude;
-mod refund;
 mod sub_app;
 use axum::{
     extract::{Path, Query},
@@ -11,10 +9,7 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
-use charge::{create_charge, CreateChargeRequestPayload};
 use notify::{create_charge_notify, create_refund_notify, retry_notify};
-use order::{create_order, retrieve_order, CreateOrderRequestPayload};
-use refund::{create_refund, retrieve_refund, CreateRefundRequestPayload};
 use sub_app::{create_or_update_sub_app_channel, retrieve_sub_app};
 
 async fn test() -> &'static str {
@@ -55,11 +50,11 @@ pub async fn get_routes() -> Router {
             let prisma_client = prisma_client.clone();
             post(|body: String| async move {
                 tracing::info!(body, "create_order");
-                let payload: CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
+                let payload: order::CreateOrderRequestPayload = serde_json::from_str(&body).map_err(|e| {
                     let err_msg = format!("error parsing create_order request payload: {:?}", e);
                     (StatusCode::BAD_REQUEST, err_msg).into_response()
                 })?;
-                match create_order(&prisma_client, payload).await {
+                match order::create_order(&prisma_client, payload).await {
                     Ok(result) => Ok(Json(result)),  // 确认下这里的 Json 会 panic 吗
                     Err(error) => Err(error.into_response()),
                 }
@@ -68,7 +63,7 @@ pub async fn get_routes() -> Router {
         .route("/v1/orders/:order_id", {
             let prisma_client = prisma_client.clone();
             get(|Path(order_id): Path<String>| async move {
-                match retrieve_order(&prisma_client, order_id).await {
+                match order::retrieve_order(&prisma_client, order_id).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }
@@ -82,12 +77,12 @@ pub async fn get_routes() -> Router {
                 // Json(charge_req_payload): Json<CreateChargeRequestPayload>,
             | async move {
                 tracing::info!(order_id, body, "create_charge");
-                let charge_req_payload: CreateChargeRequestPayload =
+                let charge_req_payload: order::CreateChargeRequestPayload =
                     serde_json::from_str(&body).map_err(|e| {
                         let err_msg = format!("error parsing create_charge request payload: {:?}", e);
                         (StatusCode::BAD_REQUEST, err_msg).into_response()
                     })?;
-                match create_charge(&prisma_client, order_id, charge_req_payload).await {
+                match order::create_charge(&prisma_client, order_id, charge_req_payload).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }
@@ -100,12 +95,12 @@ pub async fn get_routes() -> Router {
                 body: String,
             | async move {
                 tracing::info!(order_id, body, "create_refund");
-                let refund_req_payload: CreateRefundRequestPayload =
+                let refund_req_payload: order::CreateRefundRequestPayload =
                     serde_json::from_str(&body).map_err(|e| {
                         let err_msg = format!("error parsing create_refund request payload: {:?}", e);
                         (StatusCode::BAD_REQUEST, err_msg).into_response()
                     })?;
-                match create_refund(&prisma_client, order_id, refund_req_payload).await {
+                match order::create_refund(&prisma_client, order_id, refund_req_payload).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }
@@ -117,7 +112,7 @@ pub async fn get_routes() -> Router {
                 Path((order_id, refund_id)): Path<(String, String)>,
             | async move {
                 tracing::info!(order_id, refund_id, "retrieve_refund");
-                match retrieve_refund(&prisma_client, order_id, refund_id).await {
+                match order::retrieve_refund(&prisma_client, order_id, refund_id).await {
                     Ok(result) => Ok(Json(result)),
                     Err(error) => Err(error.into_response()),
                 }
