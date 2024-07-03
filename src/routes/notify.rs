@@ -13,14 +13,7 @@ async fn send_order_charge_webhook(
     charges: &Vec<crate::prisma::charge::Data>,
     charge: &crate::prisma::charge::Data,
 ) -> Result<(), ()> {
-    let order_response: OrderResponse = (
-        order.to_owned(),
-        Some(charge.to_owned()),
-        charges.to_owned(),
-        app.to_owned(),
-        sub_app.to_owned(),
-    )
-        .into();
+    let order_response: OrderResponse = (order, Some(charge), charges, app, sub_app).into();
 
     let event_data = serde_json::to_value(order_response).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);

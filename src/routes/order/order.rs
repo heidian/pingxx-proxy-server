@@ -51,7 +51,7 @@ pub async fn create_order(
 
     let (order, charges, app, sub_app) =
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
-    let order_response: OrderResponse = (order, None, charges, app, sub_app).into();
+    let order_response: OrderResponse = (&order, None, &charges, &app, &sub_app).into();
     Ok(order_response)
 }
 
@@ -69,7 +69,8 @@ pub async fn retrieve_order(
         .first()
         .cloned();
 
-    let order_response: OrderResponse = (order, first_charge, charges, app, sub_app).into();
+    let order_response: OrderResponse =
+        (&order, first_charge.as_ref(), &charges, &app, &sub_app).into();
     let result = serde_json::to_value(order_response).map_err(|e| {
         OrderError::Unexpected(format!("error serializing order response payload: {:?}", e))
     })?;

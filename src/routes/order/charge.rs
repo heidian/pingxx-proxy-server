@@ -93,14 +93,7 @@ pub async fn create_charge(
     // 重新 load 一下 order 数据，因为 order.charges 已经更新
     let (order, charges, _, _) =
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
-    let order_response: OrderResponse = (
-        order.to_owned(),
-        Some(charge),
-        charges.to_owned(),
-        app.to_owned(),
-        sub_app.to_owned(),
-    )
-        .into();
+    let order_response: OrderResponse = (&order, Some(&charge), &charges, &app, &sub_app).into();
 
     let result = serde_json::to_value(order_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))

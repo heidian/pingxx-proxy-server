@@ -9,7 +9,7 @@ pub struct ListResponse<T: Serialize> {
 }
 
 pub mod order {
-    use super::charge::{ChargeResponse, ChargeEssentialsResponse};
+    use super::charge::{ChargeEssentialsResponse, ChargeResponse};
     use super::*;
     use crate::prisma::{
         app::Data as AppData, charge::Data as ChargeData, order::Data as OrderData,
@@ -43,18 +43,21 @@ pub mod order {
         pub charges: ListResponse<ChargeResponse>,
     }
 
-    type T = (OrderData, Option<ChargeData>, Vec<ChargeData>, AppData, SubAppData);
-    impl From<T> for OrderResponse {
+    type T<'a> = (
+        &'a OrderData,
+        Option<&'a ChargeData>,
+        &'a Vec<ChargeData>,
+        &'a AppData,
+        &'a SubAppData,
+    );
+    impl From<T<'_>> for OrderResponse {
         fn from((order, charge, charges, app, sub_app): T) -> Self {
             let charges = {
                 // let empty: Vec<crate::prisma::charge::Data> = vec![];
                 // let charges = order.charges.as_ref().unwrap_or(&empty);
                 let data = charges
                     .iter()
-                    .map(|charge| {
-                        let charge_response: ChargeResponse = charge.to_owned().into();
-                        charge_response
-                    })
+                    .map(|charge| (charge, app).into())
                     .collect::<Vec<ChargeResponse>>();
                 ListResponse {
                     object: "list".to_string(),
@@ -67,13 +70,14 @@ pub mod order {
                 Some(charge) => Some(charge.into()),
                 None => None,
             };
+            let order = order.clone();
             Self {
                 id: order.id,
                 object: String::from("order"),
                 created: order.created_at.timestamp() as i32,
-                app: app.id,
+                app: app.id.clone(),
                 receipt_app: sub_app.id.clone(),
-                service_app: sub_app.id,
+                service_app: sub_app.id.clone(),
                 uid: order.uid,
                 merchant_order_no: order.merchant_order_no,
                 status: order.status,
@@ -98,7 +102,7 @@ pub mod order {
 
 pub mod charge {
     use super::*;
-    use crate::prisma::charge::Data as ChargeData;
+    use crate::prisma::{app::Data as AppData, charge::Data as ChargeData};
 
     #[derive(Serialize, Debug)]
     pub struct ChargeEssentialsResponse {
@@ -109,14 +113,14 @@ pub mod charge {
         pub failure_msg: Option<String>,
     }
 
-    impl From<ChargeData> for ChargeEssentialsResponse {
-        fn from(charge: ChargeData) -> Self {
+    impl From<&ChargeData> for ChargeEssentialsResponse {
+        fn from(charge: &ChargeData) -> Self {
             Self {
-                channel: charge.channel,
-                extra: charge.extra,
-                credential: charge.credential,
-                failure_code: charge.failure_code,
-                failure_msg: charge.failure_msg,
+                channel: charge.channel.clone(),
+                extra: charge.extra.clone(),
+                credential: charge.credential.clone(),
+                failure_code: charge.failure_code.clone(),
+                failure_msg: charge.failure_msg.clone(),
             }
         }
     }
@@ -125,6 +129,7 @@ pub mod charge {
     pub struct ChargeResponse {
         pub id: String,
         pub object: String,
+        pub app: String,
         pub channel: String,
         pub merchant_order_no: String,
         pub paid: bool,
@@ -139,12 +144,15 @@ pub mod charge {
         pub failure_msg: Option<String>,
     }
 
-    impl From<ChargeData> for ChargeResponse {
-        fn from(charge: ChargeData) -> Self {
+    type T<'a> = (&'a ChargeData, &'a AppData);
+    impl From<T<'_>> for ChargeResponse {
+        fn from((charge, app): T) -> Self {
+            let charge = charge.clone();
             Self {
                 id: charge.id,
                 object: "charge".to_string(),
                 channel: charge.channel,
+                app: app.id.clone(),
                 merchant_order_no: charge.merchant_order_no,
                 paid: charge.paid,
                 amount: charge.amount,
