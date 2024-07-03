@@ -84,6 +84,7 @@ pub async fn create_charge(
             order.currency,
             extra,
             credential,
+            order.time_expire,
             vec![crate::prisma::charge::order_id::set(Some(order_id.clone()))],
         )
         .exec()
@@ -94,9 +95,9 @@ pub async fn create_charge(
     let (order, charges, _, _) =
         crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
     let order_response: OrderResponse = (&order, Some(&charge), &charges, &app, &sub_app).into();
-
     let result = serde_json::to_value(order_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;
+
     Ok(result)
 }

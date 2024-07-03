@@ -74,14 +74,17 @@ async fn process_charge_notify(
         }
     };
 
+    let time_paid = chrono::Utc::now().timestamp() as i32;
     let charge_status = handler.process_charge_notify(payload)?;
-
     if charge_status == ChargeStatus::Success {
         charge = prisma_client
             .charge()
             .update(
                 crate::prisma::charge::id::equals(charge_id.to_string()),
-                vec![crate::prisma::charge::paid::set(true)],
+                vec![
+                    crate::prisma::charge::paid::set(true),
+                    crate::prisma::charge::time_paid::set(Some(time_paid)),
+                ],
             )
             .exec()
             .await
@@ -96,9 +99,7 @@ async fn process_charge_notify(
                         crate::prisma::order::id::equals(order.id.clone()),
                         vec![
                             crate::prisma::order::paid::set(true),
-                            crate::prisma::order::time_paid::set(Some(
-                                chrono::Utc::now().timestamp() as i32,
-                            )),
+                            crate::prisma::order::time_paid::set(Some(time_paid)),
                             crate::prisma::order::amount_paid::set(charge.amount),
                             crate::prisma::order::status::set("paid".to_string()),
                         ],
@@ -196,16 +197,17 @@ async fn process_refund_notify(
         }
     };
 
+    let time_refunded = chrono::Utc::now().timestamp() as i32;
     let refund_status = handler.process_refund_notify(payload)?;
-
     if refund_status == RefundStatus::Success {
         refund = prisma_client
             .refund()
             .update(
                 crate::prisma::refund::id::equals(refund_id.to_string()),
-                vec![crate::prisma::refund::status::set(
-                    refund_status.to_string(),
-                )],
+                vec![
+                    crate::prisma::refund::status::set(refund_status.to_string()),
+                    crate::prisma::refund::time_succeed::set(Some(time_refunded)),
+                ],
             )
             .exec()
             .await

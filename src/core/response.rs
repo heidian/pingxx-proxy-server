@@ -90,7 +90,7 @@ pub mod order {
                 subject: order.subject,
                 body: order.body,
                 currency: order.currency,
-                time_paid: None,
+                time_paid: order.time_paid,
                 time_expire: order.time_expire,
                 metadata: order.metadata,
                 charge_essentials,
@@ -140,6 +140,8 @@ pub mod charge {
         pub currency: String,
         pub extra: serde_json::Value,
         pub credential: serde_json::Value,
+        pub time_paid: Option<i32>,
+        pub time_expire: i32,
         pub failure_code: Option<String>,
         pub failure_msg: Option<String>,
     }
@@ -162,6 +164,8 @@ pub mod charge {
                 currency: charge.currency,
                 extra: charge.extra,
                 credential: charge.credential,
+                time_paid: charge.time_paid,
+                time_expire: charge.time_expire,
                 failure_code: charge.failure_code,
                 failure_msg: charge.failure_msg,
             }

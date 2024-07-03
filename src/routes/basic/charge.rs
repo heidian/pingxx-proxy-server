@@ -102,6 +102,7 @@ pub async fn create_charge(
             charge_req_payload.currency,
             extra,
             credential,
+            charge_req_payload.time_expire,
             vec![],
         )
         .exec()
@@ -109,9 +110,10 @@ pub async fn create_charge(
         .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
     let charge_response: ChargeResponse = (&charge, &app).into();
-
-    let result = serde_json::to_value(charge_response).map_err(|e| {
+    let mut result = serde_json::to_value(charge_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
     })?;
+    result["order_no"] = result["merchant_order_no"].clone();
+
     Ok(result)
 }
