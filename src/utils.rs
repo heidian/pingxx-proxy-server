@@ -99,10 +99,9 @@ mod db {
             .charge()
             .find_unique(crate::prisma::charge::id::equals(charge_id.into()))
             .with(
-                crate::prisma::charge::order::fetch()
-                    .with(crate::prisma::order::sub_app::fetch())
-                    .with(crate::prisma::order::app::fetch()),
+                crate::prisma::charge::order::fetch().with(crate::prisma::order::sub_app::fetch()),
             )
+            .with(crate::prisma::charge::app::fetch())
             .exec()
             .await?
             .ok_or_else(|| DBError::DoesNotExist(format!("charge {}", charge_id)))?;
@@ -122,7 +121,7 @@ mod db {
                     DBError::SQLFailed(format!("failed fetch sub_app on charge {}", &charge_id))
                 })?;
                 Some(*sub_app)
-            },
+            }
             None => None,
         };
         Ok((charge, order, *app, sub_app))
