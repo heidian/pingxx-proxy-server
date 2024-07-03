@@ -31,11 +31,11 @@ jobs:
         echo "commit_short_hash=$commit_short_hash" >> $GITHUB_OUTPUT
         echo "build_version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
 
-    # - name: Rust cache
-    #   uses: swatinem/rust-cache@v2
-    #   with:
-    #     workspaces: '. -> target'
-    #     cache-on-failure: false
+    - name: Rust cache
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: '. -> target'
+        cache-on-failure: false
 
     - name: Build and push
       uses: docker/build-push-action@v4
