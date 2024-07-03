@@ -93,6 +93,8 @@ model Charge {
 
     extra        Json // 渠道发起支付所需的额外信息和支付成功后渠道返回的额外信息
     credential   Json // 前端调起支付所需的参数
+    time_paid    Int?
+    time_expire  Int
     failure_code String?
     failure_msg  String? @db.Text
 
@@ -116,6 +118,7 @@ model Refund {
     description       String
 
     extra        Json // 渠道发起退款所需的额外信息和退款成功后渠道返回的额外信息
+    time_succeed Int?
     failure_code String?
     failure_msg  String? @db.Text
 
