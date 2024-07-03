@@ -6,7 +6,7 @@ use crate::{alipay, weixin};
 use serde_json::json;
 use std::str::FromStr;
 
-async fn send_charge_webhook(
+async fn send_order_charge_webhook(
     app: &crate::prisma::app::Data,
     sub_app: &crate::prisma::sub_app::Data,
     order: &crate::prisma::order::Data,
@@ -55,25 +55,29 @@ async fn process_charge_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let (mut charge, mut order, app, sub_app) =
+    let (mut charge, order, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
         ChargeError::InternalError(format!("error parsing charge channel: {:?}", e))
     })?;
 
+    let sub_app_id = match &sub_app {
+        Some(sub_app) => Some(sub_app.id.as_str()),
+        None => None,
+    };
     let handler: Box<dyn ChannelHandler + Send> = match channel {
-        PaymentChannel::AlipayPcDirect => Box::new(
-            alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
-        ),
-        PaymentChannel::AlipayWap => Box::new(
-            alipay::AlipayWap::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
-        ),
+        PaymentChannel::AlipayPcDirect => {
+            Box::new(alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), sub_app_id).await?)
+        }
+        PaymentChannel::AlipayWap => {
+            Box::new(alipay::AlipayWap::new(&prisma_client, Some(&app.id), sub_app_id).await?)
+        }
         PaymentChannel::WxPub => {
-            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
+            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), sub_app_id).await?)
         }
         PaymentChannel::WxLite => {
-            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
+            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), sub_app_id).await?)
         }
     };
 
@@ -89,27 +93,34 @@ async fn process_charge_notify(
             .exec()
             .await
             .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
-        // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
-        order = prisma_client
-            .order()
-            .update(
-                crate::prisma::order::id::equals(order.id.clone()),
-                vec![
-                    crate::prisma::order::paid::set(true),
-                    crate::prisma::order::time_paid::set(Some(
-                        chrono::Utc::now().timestamp() as i32
-                    )),
-                    crate::prisma::order::amount_paid::set(charge.amount),
-                    crate::prisma::order::status::set("paid".to_string()),
-                ],
-            )
-            .exec()
-            .await
-            .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
-        let (order, charges, _, _) =
-            crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-        let _ = send_charge_webhook(&app, &sub_app, &order, &charges, &charge).await;
+        match (order, sub_app) {
+            (Some(mut order), Some(sub_app)) => {
+                // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
+                order = prisma_client
+                    .order()
+                    .update(
+                        crate::prisma::order::id::equals(order.id.clone()),
+                        vec![
+                            crate::prisma::order::paid::set(true),
+                            crate::prisma::order::time_paid::set(Some(
+                                chrono::Utc::now().timestamp() as i32,
+                            )),
+                            crate::prisma::order::amount_paid::set(charge.amount),
+                            crate::prisma::order::status::set("paid".to_string()),
+                        ],
+                    )
+                    .exec()
+                    .await
+                    .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
+                let (order, charges, _, _) =
+                    crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
+                let _ = send_order_charge_webhook(&app, &sub_app, &order, &charges, &charge).await;
+            }
+            _ => {
+                // TODO
+            }
+        }
     }
 
     match channel {
@@ -159,7 +170,7 @@ async fn process_refund_notify(
     refund_id: &str,
     payload: &str,
 ) -> Result<String, RefundError> {
-    let (charge, mut order, app, sub_app) =
+    let (charge, order, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let mut refund = prisma_client
@@ -173,18 +184,22 @@ async fn process_refund_notify(
     let channel = PaymentChannel::from_str(&charge.channel)
         .map_err(|e| RefundError::Unexpected(format!("error parsing charge channel: {:?}", e)))?;
 
+    let sub_app_id = match &sub_app {
+        Some(sub_app) => Some(sub_app.id.as_str()),
+        None => None,
+    };
     let handler: Box<dyn ChannelHandler + Send> = match channel {
-        PaymentChannel::AlipayPcDirect => Box::new(
-            alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
-        ),
-        PaymentChannel::AlipayWap => Box::new(
-            alipay::AlipayWap::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?,
-        ),
+        PaymentChannel::AlipayPcDirect => {
+            Box::new(alipay::AlipayPcDirect::new(&prisma_client, Some(&app.id), sub_app_id).await?)
+        }
+        PaymentChannel::AlipayWap => {
+            Box::new(alipay::AlipayWap::new(&prisma_client, Some(&app.id), sub_app_id).await?)
+        }
         PaymentChannel::WxPub => {
-            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
+            Box::new(weixin::WxPub::new(&prisma_client, Some(&app.id), sub_app_id).await?)
         }
         PaymentChannel::WxLite => {
-            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), Some(&sub_app.id)).await?)
+            Box::new(weixin::WxLite::new(&prisma_client, Some(&app.id), sub_app_id).await?)
         }
     };
 
@@ -202,24 +217,28 @@ async fn process_refund_notify(
             .exec()
             .await
             .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-        order = prisma_client
-            .order()
-            .update(
-                crate::prisma::order::id::equals(order.id.clone()),
-                vec![
-                    crate::prisma::order::refunded::set(true),
-                    crate::prisma::order::amount_refunded::increment(refund.amount),
-                    crate::prisma::order::status::set("refunded".to_string()),
-                ],
-            )
-            .exec()
-            .await
-            .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-
-        // let (order, charges, _, _) =
-        //     crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-
-        let _ = send_refund_webhook(&app, &sub_app, &order, &refund).await;
+        match (order, sub_app) {
+            (Some(mut order), Some(sub_app)) => {
+                order = prisma_client
+                    .order()
+                    .update(
+                        crate::prisma::order::id::equals(order.id.clone()),
+                        vec![
+                            crate::prisma::order::refunded::set(true),
+                            crate::prisma::order::amount_refunded::increment(refund.amount),
+                            crate::prisma::order::status::set("refunded".to_string()),
+                        ],
+                    )
+                    .exec()
+                    .await
+                    .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+                // let (order, charges, _, _) = crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
+                let _ = send_refund_webhook(&app, &sub_app, &order, &refund).await;
+            }
+            _ => {
+                // TODO
+            }
+        }
     } else if refund_status == RefundStatus::Fail {
         // TODO: 需要把错误信息记录在 refund.failure_msg 上
         let _ = refund;

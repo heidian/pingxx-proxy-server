@@ -26,7 +26,17 @@ pub async fn create_refund(
     let charge_id = &refund_req_payload.charge_id.clone();
     let (charge, order, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, &charge_id).await?;
-    // let (order, app, sub_app) = crate::utils::load_order_from_db(&prisma_client, &order_id).await?;
+
+    let order = match order {
+        Some(order) => order,
+        None => return Err(RefundError::BadRequest(format!("order not found on charge {}", charge_id))),
+    };
+
+    let sub_app = match sub_app {
+        Some(sub_app) => sub_app,
+        None => return Err(RefundError::BadRequest(format!("sub_app not found on order {}", charge_id))),
+    };
+
     if order.id != order_id {
         return Err(RefundError::BadRequest(format!(
             "charge {} doesn't belong to order {}",

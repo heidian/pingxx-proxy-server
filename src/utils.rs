@@ -89,9 +89,9 @@ mod db {
     ) -> Result<
         (
             crate::prisma::charge::Data,
-            crate::prisma::order::Data,
+            Option<crate::prisma::order::Data>,
             crate::prisma::app::Data,
-            crate::prisma::sub_app::Data,
+            Option<crate::prisma::sub_app::Data>,
         ),
         DBError,
     > {
@@ -112,16 +112,20 @@ mod db {
             .ok_or_else(|| {
                 DBError::SQLFailed(format!("failed fetch order on charge {}", &charge_id))
             })?
-            .ok_or_else(|| {
-                DBError::DoesNotExist(format!("order not found on charge {}", &charge_id))
-            })?;
-        let app = order.app.clone().ok_or_else(|| {
+            .map(|order| *order);
+        let app = charge.app.clone().ok_or_else(|| {
             DBError::SQLFailed(format!("failed fetch app on charge {}", &charge_id))
         })?;
-        let sub_app = order.sub_app.clone().ok_or_else(|| {
-            DBError::SQLFailed(format!("failed fetch sub_app on charge {}", &charge_id))
-        })?;
-        Ok((charge, *order, *app, *sub_app))
+        let sub_app = match order {
+            Some(ref order) => {
+                let sub_app = order.sub_app.clone().ok_or_else(|| {
+                    DBError::SQLFailed(format!("failed fetch sub_app on charge {}", &charge_id))
+                })?;
+                Some(*sub_app)
+            },
+            None => None,
+        };
+        Ok((charge, order, *app, sub_app))
     }
 
     pub async fn load_channel_params_from_db(
