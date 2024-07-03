@@ -10,7 +10,7 @@ async fn process_charge_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let (mut charge, order, app, sub_app) =
+    let (mut charge, order, refunds, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
@@ -74,7 +74,7 @@ async fn process_charge_notify(
                 let _ = send_order_charge_webhook(&app, &sub_app, &order, &charges, &charge).await;
             }
             _ => {
-                let _ = send_basic_charge_webhook(&app, &charge).await;
+                let _ = send_basic_charge_webhook(&app, &refunds, &charge).await;
             }
         }
     }
@@ -116,7 +116,7 @@ async fn process_refund_notify(
     refund_id: &str,
     payload: &str,
 ) -> Result<String, RefundError> {
-    let (charge, order, app, sub_app) =
+    let (charge, order, _refunds, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let mut refund = prisma_client

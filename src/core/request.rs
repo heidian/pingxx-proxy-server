@@ -54,9 +54,10 @@ pub enum ChargeStatus {
 pub struct ChannelRefundRequest<'a> {
     pub charge_id: &'a str,
     pub charge_amount: i32,
+    pub charge_merchant_order_no: &'a str,
     pub refund_id: &'a str,
     pub refund_amount: i32,
-    pub merchant_order_no: &'a str,
+    pub refund_merchant_order_no: &'a str,
     pub description: &'a str,
     pub extra: &'a ChannelRefundExtra,
 }

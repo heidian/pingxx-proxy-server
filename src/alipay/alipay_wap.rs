@@ -128,9 +128,9 @@ impl ChannelHandler for AlipayWap {
         &self,
         &ChannelRefundRequest {
             charge_id,
+            charge_merchant_order_no,
             refund_id,
             refund_amount,
-            merchant_order_no,
             description,
             // extra,
             ..
@@ -143,7 +143,7 @@ impl ChannelHandler for AlipayWap {
                     refund_id,
                     charge_id,
                     &config.alipay_pid,
-                    merchant_order_no,
+                    charge_merchant_order_no,
                     refund_amount,
                     description,
                 )?;
@@ -161,7 +161,7 @@ impl ChannelHandler for AlipayWap {
             AlipayApiType::OPENAPI => {
                 let mut refund_payload = OpenApiRefundPayload::new(
                     &config.alipay_app_id,
-                    merchant_order_no,
+                    charge_merchant_order_no,
                     refund_amount,
                     description,
                 )?;

@@ -113,9 +113,10 @@ impl ChannelHandler for WxLite {
         &ChannelRefundRequest {
             charge_id,
             charge_amount,
+            charge_merchant_order_no,
             refund_id,
             refund_amount,
-            merchant_order_no,
+            refund_merchant_order_no,
             description,
             // extra,
             ..
@@ -127,7 +128,8 @@ impl ChannelHandler for WxLite {
             charge_id,
             &config.wx_lite_app_id,
             &config.wx_lite_mch_id,
-            merchant_order_no,
+            charge_merchant_order_no,
+            refund_merchant_order_no,
             charge_amount,
             refund_amount,
             description,

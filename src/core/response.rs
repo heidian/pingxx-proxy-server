@@ -52,12 +52,14 @@ pub mod order {
     );
     impl From<T<'_>> for OrderResponse {
         fn from((order, charge, charges, app, sub_app): T) -> Self {
+            // order response 里不需要 refunds
+            let refunds: Vec<crate::prisma::refund::Data> = vec![];
             let charges = {
                 // let empty: Vec<crate::prisma::charge::Data> = vec![];
                 // let charges = order.charges.as_ref().unwrap_or(&empty);
                 let data = charges
                     .iter()
-                    .map(|charge| (charge, app).into())
+                    .map(|charge| (charge, &refunds, app).into())
                     .collect::<Vec<ChargeResponse>>();
                 ListResponse {
                     object: "list".to_string(),
@@ -101,8 +103,11 @@ pub mod order {
 }
 
 pub mod charge {
+    use super::refund::RefundResponse;
     use super::*;
-    use crate::prisma::{app::Data as AppData, charge::Data as ChargeData};
+    use crate::prisma::{
+        app::Data as AppData, charge::Data as ChargeData, refund::Data as RefundData,
+    };
 
     #[derive(Serialize, Debug)]
     pub struct ChargeEssentialsResponse {
@@ -144,12 +149,25 @@ pub mod charge {
         pub time_expire: i32,
         pub failure_code: Option<String>,
         pub failure_msg: Option<String>,
+        pub refunds: ListResponse<RefundResponse>,
     }
 
-    type T<'a> = (&'a ChargeData, &'a AppData);
+    type T<'a> = (&'a ChargeData, &'a Vec<RefundData>, &'a AppData);
     impl From<T<'_>> for ChargeResponse {
-        fn from((charge, app): T) -> Self {
+        fn from((charge, refunds, app): T) -> Self {
             let charge = charge.clone();
+            let refunds = {
+                let data = refunds
+                    .iter()
+                    .map(|refund| (refund, &charge).into())
+                    .collect::<Vec<RefundResponse>>();
+                ListResponse {
+                    object: "list".to_string(),
+                    url: format!("/v1/charges/{}/refunds", &charge.id),
+                    has_more: false,
+                    data,
+                }
+            };
             Self {
                 id: charge.id,
                 object: "charge".to_string(),
@@ -168,6 +186,49 @@ pub mod charge {
                 time_expire: charge.time_expire,
                 failure_code: charge.failure_code,
                 failure_msg: charge.failure_msg,
+                refunds,
+            }
+        }
+    }
+}
+
+pub mod refund {
+    use super::*;
+    use crate::prisma::{charge::Data as ChargeData, refund::Data as RefundData};
+
+    #[derive(Serialize, Debug)]
+    pub struct RefundResponse {
+        pub id: String,
+        pub object: String,
+        pub amount: i32,
+        pub succeed: bool,
+        pub status: String,
+        pub description: String,
+        pub charge: String,          // charge.id
+        pub charge_order_no: String, // charge.merchant_order_no
+        pub extra: serde_json::Value,
+        pub time_succeed: Option<i32>,
+        pub failure_code: Option<String>,
+        pub failure_msg: Option<String>,
+    }
+
+    type T<'a> = (&'a RefundData, &'a ChargeData);
+    impl From<T<'_>> for RefundResponse {
+        fn from((refund, charge): T) -> Self {
+            let refund = refund.clone();
+            Self {
+                id: refund.id,
+                object: "refund".to_string(),
+                amount: charge.amount,
+                succeed: refund.status == "succeeded",
+                status: refund.status,
+                description: refund.description,
+                charge: charge.id.clone(),
+                charge_order_no: charge.merchant_order_no.clone(),
+                extra: refund.extra,
+                time_succeed: refund.time_succeed,
+                failure_code: refund.failure_code,
+                failure_msg: refund.failure_msg,
             }
         }
     }

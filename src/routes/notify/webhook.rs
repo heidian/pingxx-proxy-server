@@ -40,9 +40,10 @@ pub(super) async fn send_order_charge_webhook(
 
 pub(super) async fn send_basic_charge_webhook(
     app: &crate::prisma::app::Data,
+    refunds: &Vec<crate::prisma::refund::Data>,
     charge: &crate::prisma::charge::Data,
 ) -> Result<(), ()> {
-    let charge_response: ChargeResponse = (charge, app).into();
+    let charge_response: ChargeResponse = (charge, refunds, app).into();
 
     let event_data = serde_json::to_value(charge_response).map_err(|e| {
         tracing::error!("error serializing charge response payload: {:?}", e);

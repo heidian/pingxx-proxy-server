@@ -134,6 +134,45 @@ pub async fn get_routes() -> Router {
                 }
             })
         })
+        .route("/v1/charges/:charge_id", {
+            let prisma_client = prisma_client.clone();
+            get(|Path(charge_id): Path<String>| async move {
+                match basic::retrieve_charge(&prisma_client, charge_id).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
+            })
+        })
+        .route("/v1/charges/:charge_id/refunds", {
+            let prisma_client = prisma_client.clone();
+            post(|
+                Path(charge_id): Path<String>,
+                body: String,
+            | async move {
+                tracing::info!(charge_id, body, "create_refund");
+                let refund_req_payload: basic::CreateRefundRequestPayload =
+                    serde_json::from_str(&body).map_err(|e| {
+                        let err_msg = format!("error parsing create_refund request payload: {:?}", e);
+                        (StatusCode::BAD_REQUEST, err_msg).into_response()
+                    })?;
+                match basic::create_refund(&prisma_client, charge_id, refund_req_payload).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
+            })
+        })
+        .route("/v1/charges/:charge_id/refunds/:refund_id", {
+            let prisma_client = prisma_client.clone();
+            get(|
+                Path((charge_id, refund_id)): Path<(String, String)>,
+            | async move {
+                tracing::info!(charge_id, refund_id, "retrieve_refund");
+                match basic::retrieve_refund(&prisma_client, charge_id, refund_id).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(error) => Err(error.into_response()),
+                }
+            })
+        })
         .route("/notify/charges/:charge_id", {
             let prisma_client = prisma_client.clone();
             post(|

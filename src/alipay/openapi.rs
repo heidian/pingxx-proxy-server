@@ -236,16 +236,16 @@ pub struct OpenApiRefundPayload {
 
 impl OpenApiRefundPayload {
     pub fn new(
-        alipay_app_id: &str,     // 开放平台 ID, 应用 ID
-        merchant_order_no: &str, // 商户订单号
-        refund_amount: i32,      // 退款金额, 精确到分
-        description: &str,       // 退款说明
+        alipay_app_id: &str,            // 开放平台 ID, 应用 ID
+        charge_merchant_order_no: &str, // 商户订单号
+        refund_amount: i32,             // 退款金额, 精确到分
+        description: &str,              // 退款说明
     ) -> Result<Self, AlipayError> {
         let refund_amount = format!("{:.2}", refund_amount as f64 / 100.0);
         let biz_content = json!({
-            "refund_amount": refund_amount,     // 退款金额，单位为元，支持两位小数
-            "out_trade_no": merchant_order_no,  // 支付时的商户订单号
-            "refund_reason": description,       // 退款说明
+            "refund_amount": refund_amount,            // 退款金额，单位为元，支持两位小数
+            "out_trade_no": charge_merchant_order_no,  // 支付时的商户订单号
+            "refund_reason": description,              // 退款说明
         });
         Ok(Self {
             app_id: alipay_app_id.to_string(),

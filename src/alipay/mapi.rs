@@ -234,11 +234,11 @@ pub struct MapiRefundPayload {
 impl MapiRefundPayload {
     pub fn new(
         refund_id: &str,
-        charge_id: &str,         //
-        alipay_pid: &str,        // 合作者身份 ID, 商家唯一 ID
-        merchant_order_no: &str, // 商户订单号
-        refund_amount: i32,      // 退款金额, 精确到分
-        description: &str,       // 退款说明
+        charge_id: &str,                //
+        alipay_pid: &str,               // 合作者身份 ID, 商家唯一 ID
+        charge_merchant_order_no: &str, // 商户订单号
+        refund_amount: i32,             // 退款金额, 精确到分
+        description: &str,              // 退款说明
     ) -> Result<Self, AlipayError> {
         let refund_amount = format!("{:.2}", refund_amount as f64 / 100.0);
         let now = chrono::Utc::now();
@@ -259,7 +259,10 @@ impl MapiRefundPayload {
             refund_date: refund_date.clone(),
             batch_no: batch_no.clone(),
             batch_num: String::from("1"),
-            detail_data: format!("{}^{}^{}", merchant_order_no, refund_amount, description),
+            detail_data: format!(
+                "{}^{}^{}",
+                charge_merchant_order_no, refund_amount, description
+            ),
         })
     }
 

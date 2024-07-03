@@ -109,9 +109,26 @@ pub async fn create_charge(
         .await
         .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
-    let charge_response: ChargeResponse = (&charge, &app).into();
+    let refunds: Vec<crate::prisma::refund::Data> = vec![];
+    let charge_response: ChargeResponse = (&charge, &refunds, &app).into();
     let mut result = serde_json::to_value(charge_response).map_err(|e| {
-        ChargeError::InternalError(format!("error serializing order response payload: {:?}", e))
+        ChargeError::InternalError(format!("error serializing charge response: {:?}", e))
+    })?;
+    result["order_no"] = result["merchant_order_no"].clone();
+
+    Ok(result)
+}
+
+pub async fn retrieve_charge(
+    prisma_client: &crate::prisma::PrismaClient,
+    charge_id: String,
+) -> Result<serde_json::Value, ChargeError> {
+    let (charge, _order, refunds, app, _sub_app) =
+        crate::utils::load_charge_from_db(&prisma_client, &charge_id).await?;
+
+    let charge_response: ChargeResponse = (&charge, &refunds, &app).into();
+    let mut result = serde_json::to_value(charge_response).map_err(|e| {
+        ChargeError::InternalError(format!("error serializing charge response: {:?}", e))
     })?;
     result["order_no"] = result["merchant_order_no"].clone();
 

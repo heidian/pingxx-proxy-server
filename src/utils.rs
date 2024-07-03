@@ -50,35 +50,31 @@ mod db {
         ),
         DBError,
     > {
-        let order = prisma_client
+        let mut order = prisma_client
             .order()
             .find_unique(crate::prisma::order::id::equals(order_id.to_string()))
             .with(crate::prisma::order::sub_app::fetch())
             .with(crate::prisma::order::app::fetch())
             .with(
-                crate::prisma::order::charges::fetch(vec![
-                    // crate::prisma::charge::is_valid::equals(true)
-                ])
-                .order_by(crate::prisma::charge::created_at::order(
-                    prisma_client_rust::Direction::Desc,
-                )), // .take(1),
+                crate::prisma::order::charges::fetch(vec![]).order_by(
+                    crate::prisma::charge::created_at::order(prisma_client_rust::Direction::Desc),
+                ), // .take(1),
             )
             .exec()
             .await?
             .ok_or_else(|| DBError::DoesNotExist(format!("order {}", order_id)))?;
 
         let (app, sub_app) = {
-            let order = order.clone();
-            let app = order.app.ok_or_else(|| {
+            let app = order.app.take().ok_or_else(|| {
                 DBError::SQLFailed(format!("failed fetch app on order {}", order_id))
             })?;
-            let sub_app = order.sub_app.ok_or_else(|| {
+            let sub_app = order.sub_app.take().ok_or_else(|| {
                 DBError::SQLFailed(format!("failed fetch sub_app on order {}", order_id))
             })?;
             (*app, *sub_app)
         };
 
-        let charges = order.charges.clone().unwrap_or_default();
+        let charges = order.charges.take().unwrap_or_default();
 
         Ok((order, charges, app, sub_app))
     }
@@ -90,24 +86,28 @@ mod db {
         (
             crate::prisma::charge::Data,
             Option<crate::prisma::order::Data>,
+            Vec<crate::prisma::refund::Data>,
             crate::prisma::app::Data,
             Option<crate::prisma::sub_app::Data>,
         ),
         DBError,
     > {
-        let charge = prisma_client
+        let mut charge = prisma_client
             .charge()
             .find_unique(crate::prisma::charge::id::equals(charge_id.into()))
             .with(
                 crate::prisma::charge::order::fetch().with(crate::prisma::order::sub_app::fetch()),
             )
             .with(crate::prisma::charge::app::fetch())
+            .with(crate::prisma::charge::refunds::fetch(vec![]).order_by(
+                crate::prisma::refund::created_at::order(prisma_client_rust::Direction::Desc),
+            ))
             .exec()
             .await?
             .ok_or_else(|| DBError::DoesNotExist(format!("charge {}", charge_id)))?;
-        let order = charge
+        let mut order = charge
             .order
-            .clone()
+            .take()
             .ok_or_else(|| {
                 DBError::SQLFailed(format!("failed fetch order on charge {}", &charge_id))
             })?
@@ -116,15 +116,16 @@ mod db {
             DBError::SQLFailed(format!("failed fetch app on charge {}", &charge_id))
         })?;
         let sub_app = match order {
-            Some(ref order) => {
-                let sub_app = order.sub_app.clone().ok_or_else(|| {
+            Some(ref mut order) => {
+                let sub_app = order.sub_app.take().ok_or_else(|| {
                     DBError::SQLFailed(format!("failed fetch sub_app on charge {}", &charge_id))
                 })?;
                 Some(*sub_app)
             }
             None => None,
         };
-        Ok((charge, order, *app, sub_app))
+        let refunds = charge.refunds.take().unwrap_or_default();
+        Ok((charge, order, refunds, *app, sub_app))
     }
 
     pub async fn load_channel_params_from_db(

@@ -111,9 +111,10 @@ impl ChannelHandler for WxPub {
         &ChannelRefundRequest {
             charge_id,
             charge_amount,
+            charge_merchant_order_no,
             refund_id,
             refund_amount,
-            merchant_order_no,
+            refund_merchant_order_no,
             description,
             // extra,
             ..
@@ -125,7 +126,8 @@ impl ChannelHandler for WxPub {
             charge_id,
             &config.wx_pub_app_id,
             &config.wx_pub_mch_id,
-            merchant_order_no,
+            charge_merchant_order_no,
+            refund_merchant_order_no,
             charge_amount,
             refund_amount,
             description,
