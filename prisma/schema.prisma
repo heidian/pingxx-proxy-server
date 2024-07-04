@@ -14,7 +14,7 @@ model App {
     createdAt      DateTime           @default(now())
     updatedAt      DateTime           @updatedAt
     subApps        SubApp[]
-    channelParams ChannelParams[]
+    channelParams  ChannelParams[]
     orders         Order[]
     charges        Charge[]
     refunds        Refund[]
@@ -22,14 +22,14 @@ model App {
 }
 
 model SubApp {
-    id             String          @id
-    appId          String
-    app            App             @relation(fields: [appId], references: [id], onDelete: Cascade)
-    name           String
-    createdAt      DateTime        @default(now())
-    updatedAt      DateTime        @updatedAt
+    id            String          @id
+    appId         String
+    app           App             @relation(fields: [appId], references: [id], onDelete: Cascade)
+    name          String
+    createdAt     DateTime        @default(now())
+    updatedAt     DateTime        @updatedAt
     channelParams ChannelParams[]
-    orders         Order[]
+    orders        Order[]
 }
 
 model ChannelParams {
@@ -52,27 +52,27 @@ model Order {
     app      App    @relation(fields: [appId], references: [id], onDelete: Cascade)
     subAppId String
     subApp   SubApp @relation(fields: [subAppId], references: [id], onDelete: Cascade)
-    uid      String
 
+    uid             String
     merchantOrderNo String
-    status            String
-    paid              Boolean
-    refunded          Boolean
-    amount            Int
-    amountPaid       Int
-    amountRefunded   Int
-    clientIp         String
-    subject           String
-    body              String
-    currency          String
+    status          String
+    paid            Boolean
+    refunded        Boolean
+    amount          Int
+    amountPaid      Int
+    amountRefunded  Int
+    clientIp        String
+    subject         String
+    body            String
+    currency        String
 
     timePaid   Int?
     timeExpire Int
-    metadata    Json
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
-    charges     Charge[]
-    refunds     Refund[]
+    metadata   Json
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+    charges    Charge[]
+    refunds    Refund[]
 }
 
 model Charge {
@@ -85,15 +85,15 @@ model Charge {
     channel String
 
     merchantOrderNo String
-    paid              Boolean
-    amount            Int
-    clientIp         String
-    subject           String
-    body              String
-    currency          String
+    paid            Boolean
+    amount          Int
+    clientIp        String
+    subject         String
+    body            String
+    currency        String
 
-    extra        Json // 渠道发起支付所需的额外信息和支付成功后渠道返回的额外信息
-    credential   Json // 前端调起支付所需的参数
+    extra       Json // 渠道发起支付所需的额外信息和支付成功后渠道返回的额外信息
+    credential  Json // 前端调起支付所需的参数
     timePaid    Int?
     timeExpire  Int
     failureCode String?
@@ -114,11 +114,11 @@ model Refund {
     order    Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
     merchantOrderNo String
-    status            String
-    amount            Int
-    description       String
+    status          String
+    amount          Int
+    description     String
 
-    extra        Json // 渠道发起退款所需的额外信息和退款成功后渠道返回的额外信息
+    extra       Json // 渠道发起退款所需的额外信息和退款成功后渠道返回的额外信息
     timeSucceed Int?
     failureCode String?
     failureMsg  String? @db.Text
