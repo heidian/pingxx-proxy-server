@@ -173,14 +173,15 @@ impl ChannelHandler for AlipayWap {
                     extra: refund_response.clone(),
                     ..Default::default()
                 };
-                if refund_response["code"].as_str() == Some("10000") {
+                let code = refund_response["code"].as_str();
+                if code == Some("10000") {
                     if refund_response["fund_change"].as_str() == Some("Y") {
                         result.status = RefundStatus::Success;
                     } else {
-                        result.status = RefundStatus::Fail;
+                        result.status = RefundStatus::Fail(format!("fund_change != Y"));
                     }
                 } else {
-                    result.status = RefundStatus::Fail;
+                    result.status = RefundStatus::Fail(format!("code = {:?}", code));
                     result.failure_msg = match refund_response["msg"].as_str() {
                         Some(msg) => Some(msg.to_string()),
                         None => None,

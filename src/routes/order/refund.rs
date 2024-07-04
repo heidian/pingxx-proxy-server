@@ -9,9 +9,9 @@ use std::str::FromStr;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateRefundRequestPayload {
-    #[serde(rename = "charge")]  // pingxx 接口不合理，这个字段叫做 charge
+    #[serde(rename = "charge")] // pingxx 接口不合理，这个字段叫做 charge
     pub charge_id: String,
-    #[serde(rename = "charge_amount")]  // pingxx 接口不合理，这个字段叫做 charge_amount
+    #[serde(rename = "charge_amount")] // pingxx 接口不合理，这个字段叫做 charge_amount
     pub refund_amount: i32,
     pub description: String,
     pub funding_source: Option<String>, // 微信退款专用 unsettled_funds | recharge_funds
@@ -113,7 +113,7 @@ pub async fn create_refund(
         .await
         .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
     // order_id 的更新有个 bug, 没法 create 的时候直接更新，需要先创建，再更新
-    prisma_client
+    let mut refund = prisma_client
         .refund()
         .update(
             crate::prisma::refund::id::equals(refund.id.clone()),
@@ -123,24 +123,49 @@ pub async fn create_refund(
         .await
         .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
 
-    if refund_result.status == RefundStatus::Success {
-        prisma_client
-            .order()
-            .update(
-                crate::prisma::order::id::equals(order_id.clone()),
-                vec![
-                    crate::prisma::order::refunded::set(true),
-                    crate::prisma::order::amount_refunded::increment(refund_result.amount),
-                    crate::prisma::order::status::set("refunded".to_string()),
-                ],
-            )
-            .exec()
-            .await
-            .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-    } else if refund_result.status == RefundStatus::Fail {
-        //
-    } else if refund_result.status == RefundStatus::Pending {
-        //
+    match refund_result.status {
+        RefundStatus::Success => {
+            prisma_client
+                .order()
+                .update(
+                    crate::prisma::order::id::equals(order_id.clone()),
+                    vec![
+                        crate::prisma::order::refunded::set(true),
+                        crate::prisma::order::amount_refunded::increment(refund_result.amount),
+                        crate::prisma::order::status::set("refunded".to_string()),
+                    ],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+            let time_refunded = chrono::Utc::now().timestamp() as i32;
+            refund = prisma_client
+                .refund()
+                .update(
+                    crate::prisma::refund::id::equals(refund.id.to_string()),
+                    vec![
+                        crate::prisma::refund::status::set(refund_result.status.to_string()),
+                        crate::prisma::refund::time_succeed::set(Some(time_refunded)),
+                    ],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+        }
+        RefundStatus::Fail(error) => {
+            refund = prisma_client
+                .refund()
+                .update(
+                    crate::prisma::refund::id::equals(refund.id.clone()),
+                    vec![crate::prisma::refund::failure_msg::set(Some(error))],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+        }
+        RefundStatus::Pending => {
+            //
+        }
     }
 
     let refund_response: RefundResponse = (&refund, &charge).into();

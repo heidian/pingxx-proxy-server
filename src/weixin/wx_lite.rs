@@ -144,10 +144,11 @@ impl ChannelHandler for WxLite {
             extra: refund_response.clone(),
             ..Default::default()
         };
-        if refund_response["result_code"].as_str() == Some("SUCCESS") {
+        let code = refund_response["result_code"].as_str();
+        if code == Some("SUCCESS") {
             result.status = RefundStatus::Pending;
         } else {
-            result.status = RefundStatus::Fail;
+            result.status = RefundStatus::Fail(format!("code = {:?}", code));
             result.failure_msg = match refund_response["err_code_des"].as_str() {
                 Some(msg) => Some(msg.to_string()),
                 None => None,
@@ -164,7 +165,7 @@ impl ChannelHandler for WxLite {
         if refund_status == "SUCCESS" {
             Ok(RefundStatus::Success)
         } else {
-            Ok(RefundStatus::Fail)
+            Ok(RefundStatus::Fail(format!("refund_status != SUCCESS")))
         }
     }
 }

@@ -60,7 +60,7 @@ pub async fn create_refund(
         })
         .await?;
 
-    let refund = prisma_client
+    let mut refund = prisma_client
         .refund()
         .create(
             refund_id,
@@ -80,12 +80,36 @@ pub async fn create_refund(
         .await
         .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
 
-    if refund_result.status == RefundStatus::Success {
-        //
-    } else if refund_result.status == RefundStatus::Fail {
-        //
-    } else if refund_result.status == RefundStatus::Pending {
-        //
+    match refund_result.status {
+        RefundStatus::Success => {
+            let time_refunded = chrono::Utc::now().timestamp() as i32;
+            refund = prisma_client
+                .refund()
+                .update(
+                    crate::prisma::refund::id::equals(refund.id.to_string()),
+                    vec![
+                        crate::prisma::refund::status::set(refund_result.status.to_string()),
+                        crate::prisma::refund::time_succeed::set(Some(time_refunded)),
+                    ],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+        }
+        RefundStatus::Fail(error) => {
+            refund = prisma_client
+                .refund()
+                .update(
+                    crate::prisma::refund::id::equals(refund.id.clone()),
+                    vec![crate::prisma::refund::failure_msg::set(Some(error))],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+        }
+        RefundStatus::Pending => {
+            //
+        }
     }
 
     let refund_response: RefundResponse = (&refund, &charge).into();

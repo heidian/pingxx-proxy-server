@@ -179,44 +179,58 @@ async fn process_refund_notify(
 
     let time_refunded = chrono::Utc::now().timestamp() as i32;
     let refund_status = handler.process_refund_notify(payload)?;
-    if refund_status == RefundStatus::Success {
-        refund = prisma_client
-            .refund()
-            .update(
-                crate::prisma::refund::id::equals(refund_id.to_string()),
-                vec![
-                    crate::prisma::refund::status::set(refund_status.to_string()),
-                    crate::prisma::refund::time_succeed::set(Some(time_refunded)),
-                ],
-            )
-            .exec()
-            .await
-            .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-        match (order, sub_app) {
-            (Some(mut order), Some(sub_app)) => {
-                order = prisma_client
-                    .order()
-                    .update(
-                        crate::prisma::order::id::equals(order.id.clone()),
-                        vec![
-                            crate::prisma::order::refunded::set(true),
-                            crate::prisma::order::amount_refunded::increment(refund.amount),
-                            crate::prisma::order::status::set("refunded".to_string()),
-                        ],
-                    )
-                    .exec()
-                    .await
-                    .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-                // let (order, charges, _, _) = crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-                let _ = send_refund_webhook(&app, &sub_app, &order, &refund).await;
-            }
-            _ => {
-                // TODO
+    match refund_status {
+        RefundStatus::Success => {
+            refund = prisma_client
+                .refund()
+                .update(
+                    crate::prisma::refund::id::equals(refund_id.to_string()),
+                    vec![
+                        crate::prisma::refund::status::set(refund_status.to_string()),
+                        crate::prisma::refund::time_succeed::set(Some(time_refunded)),
+                    ],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+            match (order, sub_app) {
+                (Some(mut order), Some(sub_app)) => {
+                    order = prisma_client
+                        .order()
+                        .update(
+                            crate::prisma::order::id::equals(order.id.clone()),
+                            vec![
+                                crate::prisma::order::refunded::set(true),
+                                crate::prisma::order::amount_refunded::increment(refund.amount),
+                                crate::prisma::order::status::set("refunded".to_string()),
+                            ],
+                        )
+                        .exec()
+                        .await
+                        .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+                    // let (order, charges, _, _) = crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
+                    let _ = send_refund_webhook(&app, &sub_app, &order, &refund).await;
+                }
+                _ => {
+                    // TODO
+                }
             }
         }
-    } else if refund_status == RefundStatus::Fail {
-        // TODO: 需要把错误信息记录在 refund.failure_msg 上
-        let _ = refund;
+        RefundStatus::Fail(error) => {
+            refund = prisma_client
+                .refund()
+                .update(
+                    crate::prisma::refund::id::equals(refund.id.clone()),
+                    vec![crate::prisma::refund::failure_msg::set(Some(error))],
+                )
+                .exec()
+                .await
+                .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+            let _ = refund;
+        }
+        RefundStatus::Pending => {
+            //
+        }
     }
 
     match channel {

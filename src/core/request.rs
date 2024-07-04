@@ -2,7 +2,6 @@ use super::error::{ChargeError, RefundError};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::str::FromStr;
 
 #[async_trait]
 pub trait ChannelHandler {
@@ -73,28 +72,21 @@ pub struct ChannelRefundExtra {
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub enum RefundStatus {
-    #[serde(rename = "pending")]
+    // #[serde(rename = "pending")]
     Pending,
-    #[serde(rename = "succeeded")]
+    // #[serde(rename = "succeeded")]
     Success,
-    #[serde(rename = "failed")]
-    Fail,
-}
-
-impl FromStr for RefundStatus {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let val = serde_json::Value::String(s.to_string());
-        let channel = serde_json::from_value::<RefundStatus>(val)
-            .map_err(|e| format!("error parsing RefundStatus from string: {:?}", e))?;
-        Ok(channel)
-    }
+    // #[serde(rename = "failed")]  // Fail 加了参数就没法直接用 serde_json 解析了, 会变成 { "failed": "xxx" }
+    Fail(String),
 }
 
 impl ToString for RefundStatus {
     fn to_string(&self) -> String {
-        let val = serde_json::to_value(self).unwrap();
-        val.as_str().unwrap().to_string()
+        match self {
+            RefundStatus::Pending => "pending".to_string(),
+            RefundStatus::Success => "succeeded".to_string(),
+            RefundStatus::Fail(_) => "failed".to_string(),
+        }
     }
 }
 
