@@ -9,15 +9,16 @@ datasource db {
 }
 
 model App {
-    id             String          @id
+    id             String             @id
     name           String
-    createdAt      DateTime        @default(now())
-    updatedAt      DateTime        @updatedAt
+    createdAt      DateTime           @default(now())
+    updatedAt      DateTime           @updatedAt
     subApps        SubApp[]
-    channel_params ChannelParams[]
+    channelParams ChannelParams[]
     orders         Order[]
     charges        Charge[]
     refunds        Refund[]
+    webhookConfigs AppWebhookConfig[]
 }
 
 model SubApp {
@@ -27,7 +28,7 @@ model SubApp {
     name           String
     createdAt      DateTime        @default(now())
     updatedAt      DateTime        @updatedAt
-    channel_params ChannelParams[]
+    channelParams ChannelParams[]
     orders         Order[]
 }
 
@@ -53,20 +54,20 @@ model Order {
     subApp   SubApp @relation(fields: [subAppId], references: [id], onDelete: Cascade)
     uid      String
 
-    merchant_order_no String
+    merchantOrderNo String
     status            String
     paid              Boolean
     refunded          Boolean
     amount            Int
-    amount_paid       Int
-    amount_refunded   Int
-    client_ip         String
+    amountPaid       Int
+    amountRefunded   Int
+    clientIp         String
     subject           String
     body              String
     currency          String
 
-    time_paid   Int?
-    time_expire Int
+    timePaid   Int?
+    timeExpire Int
     metadata    Json
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
@@ -83,20 +84,20 @@ model Charge {
 
     channel String
 
-    merchant_order_no String
+    merchantOrderNo String
     paid              Boolean
     amount            Int
-    client_ip         String
+    clientIp         String
     subject           String
     body              String
     currency          String
 
     extra        Json // 渠道发起支付所需的额外信息和支付成功后渠道返回的额外信息
     credential   Json // 前端调起支付所需的参数
-    time_paid    Int?
-    time_expire  Int
-    failure_code String?
-    failure_msg  String? @db.Text
+    timePaid    Int?
+    timeExpire  Int
+    failureCode String?
+    failureMsg  String? @db.Text
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -112,15 +113,15 @@ model Refund {
     orderId  String?
     order    Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-    merchant_order_no String
+    merchantOrderNo String
     status            String
     amount            Int
     description       String
 
     extra        Json // 渠道发起退款所需的额外信息和退款成功后渠道返回的额外信息
-    time_succeed Int?
-    failure_code String?
-    failure_msg  String? @db.Text
+    timeSucceed Int?
+    failureCode String?
+    failureMsg  String? @db.Text
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -135,4 +136,16 @@ model ChargeNotifyHistory {
     updatedAt DateTime @updatedAt
 
     @@index([chargeId])
+}
+
+model AppWebhookConfig {
+    id        Int      @id @default(autoincrement())
+    appId     String
+    app       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+    endpoint  String
+    events    Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([appId, endpoint])
 }
