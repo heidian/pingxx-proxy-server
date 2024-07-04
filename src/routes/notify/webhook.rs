@@ -2,6 +2,7 @@ use crate::core::{OrderResponse, ChargeResponse};
 use serde_json::json;
 
 pub(super) async fn send_order_charge_webhook(
+    app_webhook_url: &str,
     app: &crate::prisma::app::Data,
     sub_app: &crate::prisma::sub_app::Data,
     order: &crate::prisma::order::Data,
@@ -24,9 +25,9 @@ pub(super) async fn send_order_charge_webhook(
         },
     });
 
-    let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
+    // let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
     let res = reqwest::Client::new()
-        .post(&app_webhook_url)
+        .post(app_webhook_url)
         .json(&event_payload)
         .send()
         .await
@@ -39,6 +40,7 @@ pub(super) async fn send_order_charge_webhook(
 }
 
 pub(super) async fn send_basic_charge_webhook(
+    app_webhook_url: &str,
     app: &crate::prisma::app::Data,
     refunds: &Vec<crate::prisma::refund::Data>,
     charge: &crate::prisma::charge::Data,
@@ -59,9 +61,9 @@ pub(super) async fn send_basic_charge_webhook(
         },
     });
 
-    let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
+    // let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
     let res = reqwest::Client::new()
-        .post(&app_webhook_url)
+        .post(app_webhook_url)
         .json(&event_payload)
         .send()
         .await

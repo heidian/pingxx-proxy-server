@@ -36,6 +36,16 @@ async fn process_charge_notify(
         }
     };
 
+    // TODO: 目前暂时只取第一个
+    let webhook_config = prisma_client
+        .app_webhook_config()
+        .find_first(vec![crate::prisma::app_webhook_config::app_id::equals(
+            app.id.clone(),
+        )])
+        .exec()
+        .await
+        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
+
     let time_paid = chrono::Utc::now().timestamp() as i32;
     let charge_status = handler.process_charge_notify(payload)?;
     if charge_status == ChargeStatus::Success {
@@ -71,10 +81,28 @@ async fn process_charge_notify(
                     .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
                 let (order, charges, _, _) =
                     crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-                let _ = send_order_charge_webhook(&app, &sub_app, &order, &charges, &charge).await;
+                if let Some(webhook_config) = webhook_config {
+                    let _ = send_order_charge_webhook(
+                        &webhook_config.endpoint,
+                        &app,
+                        &sub_app,
+                        &order,
+                        &charges,
+                        &charge,
+                    )
+                    .await;
+                }
             }
             _ => {
-                let _ = send_basic_charge_webhook(&app, &refunds, &charge).await;
+                if let Some(webhook_config) = webhook_config {
+                    let _ = send_basic_charge_webhook(
+                        &webhook_config.endpoint,
+                        &app,
+                        &refunds,
+                        &charge,
+                    )
+                    .await;
+                }
             }
         }
     }
