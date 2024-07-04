@@ -28,7 +28,13 @@ async fn main() {
     // tracing_subscriber::fmt::init();
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_ansi({
+            if cfg!(debug_assertions) {
+                true
+            } else {
+                false
+            }
+        }))
         .init();
     // build our application with a route
     let charge_routes = routes::get_routes().await;
