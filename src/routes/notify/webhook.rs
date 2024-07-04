@@ -44,10 +44,10 @@ pub(super) async fn send_basic_charge_webhook(
     charge: &crate::prisma::charge::Data,
 ) -> Result<(), ()> {
     let charge_response: ChargeResponse = (charge, refunds, app).into();
-
-    let event_data = serde_json::to_value(charge_response).map_err(|e| {
+    let mut event_data = serde_json::to_value(charge_response).map_err(|e| {
         tracing::error!("error serializing charge response payload: {:?}", e);
     })?;
+    event_data["order_no"] = event_data["merchant_order_no"].clone();
 
     let event_payload = json!({
         "id": crate::utils::generate_id("evt_"),
