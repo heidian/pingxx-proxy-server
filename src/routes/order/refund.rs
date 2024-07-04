@@ -9,7 +9,9 @@ use std::str::FromStr;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateRefundRequestPayload {
+    #[serde(rename = "charge")]  // pingxx 接口不合理，这个字段叫做 charge
     pub charge_id: String,
+    #[serde(rename = "charge_amount")]  // pingxx 接口不合理，这个字段叫做 charge_amount
     pub refund_amount: i32,
     pub description: String,
     pub funding_source: Option<String>, // 微信退款专用 unsettled_funds | recharge_funds
@@ -94,7 +96,7 @@ pub async fn create_refund(
         .refund()
         .create(
             refund_id,
-            crate::prisma::app::id::equals(order.app_id.clone()),
+            crate::prisma::app::id::equals(app.id.clone()),
             crate::prisma::charge::id::equals(charge_id.clone()),
             refund_merchant_order_no,
             refund_result.status.to_string(),
@@ -102,10 +104,20 @@ pub async fn create_refund(
             refund_result.description,
             refund_result.extra,
             vec![
-                crate::prisma::refund::order_id::set(Some(order_id.clone())),
+                // crate::prisma::refund::order_id::set(Some(order_id.clone())),
                 crate::prisma::refund::failure_code::set(refund_result.failure_code),
                 crate::prisma::refund::failure_msg::set(refund_result.failure_msg),
             ],
+        )
+        .exec()
+        .await
+        .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
+    // order_id 的更新有个 bug, 没法 create 的时候直接更新，需要先创建，再更新
+    prisma_client
+        .refund()
+        .update(
+            crate::prisma::refund::id::equals(refund.id.clone()),
+            vec![crate::prisma::refund::order_id::set(Some(order_id.clone()))],
         )
         .exec()
         .await

@@ -64,7 +64,7 @@ pub async fn create_refund(
         .refund()
         .create(
             refund_id,
-            crate::prisma::app::id::equals(charge.app_id.clone()),
+            crate::prisma::app::id::equals(app.id.clone()),
             crate::prisma::charge::id::equals(charge_id.clone()),
             refund_merchant_order_no,
             refund_result.status.to_string(),

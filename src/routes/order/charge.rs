@@ -73,7 +73,7 @@ pub async fn create_charge(
         .charge()
         .create(
             charge_id.clone(),
-            crate::prisma::app::id::equals(order.app_id.clone()),
+            crate::prisma::app::id::equals(app.id.clone()),
             charge_req_payload.channel.to_string(),
             order.merchant_order_no.clone(),
             false,
@@ -85,6 +85,18 @@ pub async fn create_charge(
             extra,
             credential,
             order.time_expire,
+            vec![
+                // crate::prisma::charge::order_id::set(Some(order_id.clone()))
+            ],
+        )
+        .exec()
+        .await
+        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
+    // order_id 的更新有个 bug, 没法 create 的时候直接更新，需要先创建，再更新
+    prisma_client
+        .charge()
+        .update(
+            crate::prisma::charge::id::equals(charge.id.clone()),
             vec![crate::prisma::charge::order_id::set(Some(order_id.clone()))],
         )
         .exec()
