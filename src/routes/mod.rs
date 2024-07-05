@@ -164,49 +164,6 @@ pub async fn get_routes() -> Router {
                 },
             )
         })
-        .route("/notify/charges/:charge_id", {
-            let prisma_client = prisma_client.clone();
-            post(
-                |Query(query): Query<serde_json::Value>,
-                 Path(charge_id): Path<String>,
-                 headers: HeaderMap,
-                 body: String| async move {
-                    let headers_str = format!("{:?}", headers);
-                    tracing::info!(
-                        charge_id = charge_id,
-                        query = query.to_string(),
-                        payload = body.as_str(),
-                        headers = &headers_str,
-                        "create_charge_notify"
-                    );
-                    create_charge_notify(&prisma_client, charge_id, body).await
-                },
-            )
-        })
-        .route("/notify/charges/:charge_id/refunds/:refund_id", {
-            let prisma_client = prisma_client.clone();
-            post(
-                |Query(query): Query<serde_json::Value>,
-                 Path((charge_id, refund_id)): Path<(String, String)>,
-                 headers: HeaderMap,
-                 body: String| async move {
-                    let headers_str = format!("{:?}", headers);
-                    tracing::info!(
-                        charge_id = charge_id,
-                        refund_id = refund_id,
-                        query = query.to_string(),
-                        payload = body.as_str(),
-                        headers = &headers_str,
-                        "create_refund_notify"
-                    );
-                    create_refund_notify(&prisma_client, charge_id, refund_id, body).await
-                },
-            )
-        })
-        .route("/notify/:id/retry", {
-            let prisma_client = prisma_client.clone();
-            post(|Path(id): Path<i32>| async move { retry_notify(&prisma_client, id).await })
-        })
         .route("/v1/apps/:app_id/sub_apps/:sub_app_id", {
             let prisma_client = prisma_client.clone();
             get(
@@ -262,4 +219,50 @@ pub async fn get_routes() -> Router {
             )
         })
         .layer(middleware::from_fn(auth))
+        /*
+         * 之后的 route 不需要 bearer auth, 会各自验证不同渠道的签名
+         */
+        .route("/notify/charges/:charge_id", {
+            let prisma_client = prisma_client.clone();
+            post(
+                |Query(query): Query<serde_json::Value>,
+                 Path(charge_id): Path<String>,
+                 headers: HeaderMap,
+                 body: String| async move {
+                    let headers_str = format!("{:?}", headers);
+                    tracing::info!(
+                        charge_id = charge_id,
+                        query = query.to_string(),
+                        payload = body.as_str(),
+                        headers = &headers_str,
+                        "create_charge_notify"
+                    );
+                    create_charge_notify(&prisma_client, charge_id, body).await
+                },
+            )
+        })
+        .route("/notify/charges/:charge_id/refunds/:refund_id", {
+            let prisma_client = prisma_client.clone();
+            post(
+                |Query(query): Query<serde_json::Value>,
+                 Path((charge_id, refund_id)): Path<(String, String)>,
+                 headers: HeaderMap,
+                 body: String| async move {
+                    let headers_str = format!("{:?}", headers);
+                    tracing::info!(
+                        charge_id = charge_id,
+                        refund_id = refund_id,
+                        query = query.to_string(),
+                        payload = body.as_str(),
+                        headers = &headers_str,
+                        "create_refund_notify"
+                    );
+                    create_refund_notify(&prisma_client, charge_id, refund_id, body).await
+                },
+            )
+        })
+        .route("/notify/:id/retry", {
+            let prisma_client = prisma_client.clone();
+            post(|Path(id): Path<i32>| async move { retry_notify(&prisma_client, id).await })
+        })
 }
