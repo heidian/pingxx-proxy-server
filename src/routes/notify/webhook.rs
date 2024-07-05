@@ -1,5 +1,48 @@
-use crate::core::{OrderResponse, ChargeResponse};
+use crate::core::{ChargeResponse, OrderResponse};
 use serde_json::json;
+
+async fn request_to_webhook_endpoint(
+    app_webhook_url: &str,
+    event_data: &serde_json::Value,
+) -> Result<(), ()> {
+    let event_payload = json!({
+        "id": crate::utils::generate_id("evt_"),
+        "object": "event",
+        "created": chrono::Utc::now().timestamp(),
+        "type": "charge.succeeded",
+        "data": {
+            "object": event_data
+        },
+    });
+    // let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
+    let res = reqwest::Client::new()
+        .post(app_webhook_url)
+        .json(&event_payload)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("error sending webhook: {:?}", e);
+        })?;
+    let status = res.status();
+    let text = res.text().await;
+    if status != reqwest::StatusCode::OK {
+        tracing::error!(
+            status = format!("{:?}", status),
+            text = format!("{:?}", text),
+            "webhook response from {}",
+            app_webhook_url
+        );
+    } else {
+        tracing::info!(
+            status = format!("{:?}", status),
+            text = format!("{:?}", text),
+            "webhook response from {}",
+            app_webhook_url
+        );
+    }
+
+    Ok(())
+}
 
 pub(super) async fn send_order_charge_webhook(
     app_webhook_url: &str,
@@ -10,33 +53,10 @@ pub(super) async fn send_order_charge_webhook(
     charge: &crate::prisma::charge::Data,
 ) -> Result<(), ()> {
     let order_response: OrderResponse = (order, Some(charge), charges, app, sub_app).into();
-
     let event_data = serde_json::to_value(order_response).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);
     })?;
-
-    let event_payload = json!({
-        "id": crate::utils::generate_id("evt_"),
-        "object": "event",
-        "created": chrono::Utc::now().timestamp(),
-        "type": "order.succeeded",
-        "data": {
-            "object": event_data
-        },
-    });
-
-    // let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
-    let res = reqwest::Client::new()
-        .post(app_webhook_url)
-        .json(&event_payload)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("error sending webhook: {:?}", e);
-        })?;
-    tracing::info!("webhook response {} {:?}", res.status(), res.text().await);
-
-    Ok(())
+    request_to_webhook_endpoint(app_webhook_url, &event_data).await
 }
 
 pub(super) async fn send_basic_charge_webhook(
@@ -50,31 +70,8 @@ pub(super) async fn send_basic_charge_webhook(
         tracing::error!("error serializing charge response payload: {:?}", e);
     })?;
     event_data["order_no"] = event_data["merchant_order_no"].clone();
-
-    let event_payload = json!({
-        "id": crate::utils::generate_id("evt_"),
-        "object": "event",
-        "created": chrono::Utc::now().timestamp(),
-        "type": "charge.succeeded",
-        "data": {
-            "object": event_data
-        },
-    });
-
-    // let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
-    let res = reqwest::Client::new()
-        .post(app_webhook_url)
-        .json(&event_payload)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("error sending webhook: {:?}", e);
-        })?;
-    tracing::info!("webhook response {} {:?}", res.status(), res.text().await);
-
-    Ok(())
+    request_to_webhook_endpoint(app_webhook_url, &event_data).await
 }
-
 
 pub(super) async fn send_refund_webhook(
     _app: &crate::prisma::app::Data,
