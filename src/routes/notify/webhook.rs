@@ -1,6 +1,37 @@
 use crate::core::{ChargeResponse, OrderResponse};
 use serde_json::json;
 
+mod webhook_rsa2 {
+    use openssl::{
+        hash::MessageDigest,
+        pkey::PKey,
+        rsa::Rsa,
+        sign::Signer,
+    };
+
+    pub struct SignError(pub String);
+    impl From<openssl::error::ErrorStack> for SignError {
+        fn from(e: openssl::error::ErrorStack) -> Self {
+            SignError(format!("[openssl] {:?}", e))
+        }
+    }
+    impl From<data_encoding::DecodeError> for SignError {
+        fn from(e: data_encoding::DecodeError) -> Self {
+            SignError(format!("[base64] {:?}", e))
+        }
+    }
+
+    pub fn sign(sign_source: &str, private_key: &str) -> Result<String, SignError> {
+        let keypair = Rsa::private_key_from_pem(private_key.as_bytes())?;
+        let keypair = PKey::from_rsa(keypair)?;
+        let mut signer = Signer::new(MessageDigest::sha256(), &keypair)?;
+        signer.update(sign_source.as_bytes())?;
+        let signature_bytes = signer.sign_to_vec()?;
+        let signature = data_encoding::BASE64.encode(&signature_bytes);
+        Ok(signature)
+    }
+}
+
 async fn request_to_webhook_endpoint(
     app_webhook_url: &str,
     event_data: &serde_json::Value,
@@ -14,10 +45,19 @@ async fn request_to_webhook_endpoint(
             "object": event_data
         },
     });
+    let event_payload_text = event_payload.to_string();
+    let private_key = std::env::var("WEBHOOK_RSA256_PRIVATE_KEY")
+        .expect("WEBHOOK_RSA256_PRIVATE_KEY must be set");
+    let signature = webhook_rsa2::sign(&event_payload_text, &private_key).map_err(|e| {
+        tracing::error!("error signing webhook: {:?}", e.0);
+    })?;
     // let app_webhook_url = std::env::var("APP_WEBHOOK_URL").expect("APP_WEBHOOK_URL must be set");
     let res = reqwest::Client::new()
         .post(app_webhook_url)
-        .json(&event_payload)
+        .header("X-PingPlusPlus-Signature", signature)
+        .header("Content-Type", "application/json")
+        .body(event_payload_text)
+        // .json(&event_payload)
         .send()
         .await
         .map_err(|e| {
