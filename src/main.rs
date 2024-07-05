@@ -1,9 +1,9 @@
 // #![recursion_limit = "256"]
 use axum::{
     extract::Query,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use dotenvy::dotenv;
@@ -41,6 +41,31 @@ async fn main() {
     let app = Router::new()
         .nest("/", charge_routes)
         .route("/", get(root))
+        .route("/test", get(test))
+        .route(
+            "/.ping",
+            post({
+                |query: Query<serde_json::Value>, headers: HeaderMap, payload: String| async move {
+                    tracing::info!(
+                        query = query.to_string(),
+                        payload = payload,
+                        headers = &format!("{:?}", headers),
+                        ".ping"
+                    );
+                    "pingxx ok"
+                }
+            })
+            .merge(get({
+                |query: Query<serde_json::Value>, headers: HeaderMap| async move {
+                    tracing::info!(
+                        query = query.to_string(),
+                        headers = &format!("{:?}", headers),
+                        ".ping"
+                    );
+                    "pingxx ok"
+                }
+            })),
+        )
         .fallback(fallback)
         .layer(
             ServiceBuilder::new()
@@ -71,6 +96,10 @@ async fn main() {
 // basic handler that responds with a static string
 async fn root() -> &'static str {
     "Hello, World!"
+}
+
+async fn test() -> &'static str {
+    "test"
 }
 
 async fn fallback(Query(query): Query<serde_json::Value>, body: String) -> Response {

@@ -4,17 +4,34 @@ mod order;
 mod prelude;
 mod sub_app;
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, Request},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Json},
+    middleware::{self, Next},
+    response::{IntoResponse, Json, Response},
     routing::{get, post, put},
     Router,
 };
 use notify::{create_charge_notify, create_refund_notify, retry_notify};
 use sub_app::{create_or_update_sub_app_channel, retrieve_sub_app};
 
-async fn test() -> &'static str {
-    "test"
+async fn auth(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let api_live_key = std::env::var("API_LIVE_KEY").expect("API_LIVE_KEY is not set");
+    let auth_header = req
+        .headers()
+        .get("Authorization")
+        .and_then(|header| header.to_str().ok());
+
+    println!("auth_header: {:?}", auth_header);
+
+    if let Some(auth_header) = auth_header {
+        if auth_header.starts_with("Bearer ") {
+            let credential = auth_header.trim_start_matches("Bearer ");
+            if credential == api_live_key {
+                return Ok(next.run(req).await);
+            }
+        }
+    }
+    Err(StatusCode::UNAUTHORIZED)
 }
 
 pub async fn get_routes() -> Router {
@@ -23,30 +40,7 @@ pub async fn get_routes() -> Router {
         .expect("error getting prisma client");
     let prisma_client = std::sync::Arc::new(prisma_client);
 
-    Router::new().route("/test", get(test))
-        .route(
-            "/.ping",
-            post({
-                |Query(query): Query<serde_json::Value>, headers: HeaderMap, payload: String| async move {
-                    tracing::info!(
-                        query = query.to_string(),
-                        payload = payload,
-                        headers = &format!("{:?}", headers),
-                        ".ping"
-                    );
-                    "pingxx ok"
-                }
-            }).merge(get({
-                |Query(query): Query<serde_json::Value>, headers: HeaderMap| async move {
-                    tracing::info!(
-                        query = query.to_string(),
-                        headers = &format!("{:?}", headers),
-                        ".ping"
-                    );
-                    "pingxx ok"
-                }
-            })),
-        )
+    Router::new()
         .route("/v1/orders", {
             let prisma_client = prisma_client.clone();
             post(|body: String| async move {
@@ -254,4 +248,5 @@ pub async fn get_routes() -> Router {
                 }
             })
         })
+        .layer(middleware::from_fn(auth))
 }
