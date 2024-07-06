@@ -1,6 +1,6 @@
 # 平替部分 Ping++ 接口的支付网关服务
 
-Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业务代码并复用 sdk 直接替换，到时候就换个支付回调地址和 ping++ sdk 的 api base，顺便 RIIR ✌️
+打算做个 Ping++ 支付网关平替的接口，目的是可以不动业务代码并复用 SDK 直接替换（只需要换个签名验证的公钥和 Ping++ SDK 的 `api base`），顺便 RIIR 🦀✌️
 
 完全替代不大可能，Ping++ 依然是目前接触到的接入最全的支付网关，主要实现：
 
@@ -23,13 +23,6 @@ Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业�
 -   Dashboard
 -   分叉，不再兼容
 
-## 调试方式
-
-1. 启动 frp, 将本地服务暴露到 pingxx.heidianapi.com
-2. 启动 shopbackend 和 shopbackend django admin
-3. 启动 shopfront 以前端发起支付
-4. 启动 pingxx-proxy-server
-
 ## 启动 pingxx-proxy-server
 
 日志用了 tracing 库，需要设置环境变量 RUST_LOG，比如
@@ -37,6 +30,37 @@ Ping++ 价格谈崩了，打算做个平替的接口，目的是可以不动业�
 ```bash
 RUST_LOG=pingxx_proxy_server=debug cargo watch -x "run"
 ```
+
+## 已实现的接口
+
+### 接口授权
+
+- [x] 沿用 Ping++ 的 `Bearer [API_LIVE_KEY]` 格式
+
+### 商户系统
+
+- [x] `/v1/apps/:app_id/sub_apps/:sub_app_id`
+- [x] `/v1/apps/:app_id/sub_apps/:sub_app_id/channels/:channel`
+- [x] `/v1/apps/:app_id/sub_apps/:sub_app_id/channels`
+
+- [x] `/v1/orders`
+- [x] `/v1/orders/:order_id`
+- [x] `/v1/orders/:order_id/pay`
+- [x] `/v1/orders/:order_id/order_refunds`
+- [x] `/v1/orders/:order_id/order_refunds/:refund_id`
+
+### 基础支付
+
+- [x] `/v1/charges`
+- [x] `/v1/charges/:charge_id`
+- [x] `/v1/charges/:charge_id/refunds`
+- [x] `/v1/charges/:charge_id/refunds/:refund_id`
+
+### 支付渠道异步通知
+
+- [x] `/notify/charges/:charge_id`
+- [x] `/notify/charges/:charge_id/refunds/:refund_id`
+- [x] `/notify/:id/retry` 测试用途
 
 ## 数据结构
 
