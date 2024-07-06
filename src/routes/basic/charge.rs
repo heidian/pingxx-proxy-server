@@ -111,10 +111,9 @@ pub async fn create_charge(
 
     let refunds: Vec<crate::prisma::refund::Data> = vec![];
     let charge_response: ChargeResponse = (&charge, &refunds, &app).into();
-    let mut result = serde_json::to_value(charge_response).map_err(|e| {
+    let result = serde_json::to_value(charge_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing charge response: {:?}", e))
     })?;
-    result["order_no"] = result["merchant_order_no"].clone();
 
     Ok(result)
 }
@@ -127,10 +126,9 @@ pub async fn retrieve_charge(
         crate::utils::load_charge_from_db(&prisma_client, &charge_id).await?;
 
     let charge_response: ChargeResponse = (&charge, &refunds, &app).into();
-    let mut result = serde_json::to_value(charge_response).map_err(|e| {
+    let result = serde_json::to_value(charge_response).map_err(|e| {
         ChargeError::InternalError(format!("error serializing charge response: {:?}", e))
     })?;
-    result["order_no"] = result["merchant_order_no"].clone();
 
     Ok(result)
 }

@@ -1,4 +1,4 @@
-use super::webhook::{send_basic_charge_webhook, send_order_charge_webhook, send_refund_webhook};
+use super::webhook::{send_charge_success_webhook, send_refund_success_webhook};
 use crate::core::{
     ChannelHandler, ChargeError, ChargeStatus, PaymentChannel, RefundError, RefundStatus,
 };
@@ -10,7 +10,7 @@ async fn process_charge_notify(
     charge_id: &str,
     payload: &str,
 ) -> Result<String, ChargeError> {
-    let (mut charge, order, refunds, app, sub_app) =
+    let (charge, order, _, app, sub_app) =
         crate::utils::load_charge_from_db(&prisma_client, charge_id).await?;
 
     let channel = PaymentChannel::from_str(&charge.channel).map_err(|e| {
@@ -36,20 +36,10 @@ async fn process_charge_notify(
         }
     };
 
-    // TODO: 目前暂时只取第一个
-    let webhook_config = prisma_client
-        .app_webhook_config()
-        .find_first(vec![crate::prisma::app_webhook_config::app_id::equals(
-            app.id.clone(),
-        )])
-        .exec()
-        .await
-        .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
-
     let time_paid = chrono::Utc::now().timestamp() as i32;
     let charge_status = handler.process_charge_notify(payload)?;
     if charge_status == ChargeStatus::Success {
-        charge = prisma_client
+        prisma_client
             .charge()
             .update(
                 crate::prisma::charge::id::equals(charge_id.to_string()),
@@ -62,49 +52,25 @@ async fn process_charge_notify(
             .await
             .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
 
-        match (order, sub_app) {
-            (Some(mut order), Some(sub_app)) => {
-                // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
-                order = prisma_client
-                    .order()
-                    .update(
-                        crate::prisma::order::id::equals(order.id.clone()),
-                        vec![
-                            crate::prisma::order::paid::set(true),
-                            crate::prisma::order::time_paid::set(Some(time_paid)),
-                            crate::prisma::order::amount_paid::set(charge.amount),
-                            crate::prisma::order::status::set("paid".to_string()),
-                        ],
-                    )
-                    .exec()
-                    .await
-                    .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
-                let (order, charges, _, _) =
-                    crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-                if let Some(webhook_config) = webhook_config {
-                    let _ = send_order_charge_webhook(
-                        &webhook_config.endpoint,
-                        &app,
-                        &sub_app,
-                        &order,
-                        &charges,
-                        &charge,
-                    )
-                    .await;
-                }
-            }
-            _ => {
-                if let Some(webhook_config) = webhook_config {
-                    let _ = send_basic_charge_webhook(
-                        &webhook_config.endpoint,
-                        &app,
-                        &refunds,
-                        &charge,
-                    )
-                    .await;
-                }
-            }
+        if let Some(ref order) = order {
+            // update order.paid 并更新 order, 因为后面 send_webhook 需要最新的 order 数据
+            prisma_client
+                .order()
+                .update(
+                    crate::prisma::order::id::equals(order.id.clone()),
+                    vec![
+                        crate::prisma::order::paid::set(true),
+                        crate::prisma::order::time_paid::set(Some(time_paid)),
+                        crate::prisma::order::amount_paid::set(charge.amount),
+                        crate::prisma::order::status::set("paid".to_string()),
+                    ],
+                )
+                .exec()
+                .await
+                .map_err(|e| ChargeError::InternalError(format!("sql error: {:?}", e)))?;
         }
+
+        let _ = send_charge_success_webhook(prisma_client, charge_id).await;
     }
 
     match channel {
@@ -193,28 +159,24 @@ async fn process_refund_notify(
                 .exec()
                 .await
                 .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-            match (order, sub_app) {
-                (Some(mut order), Some(sub_app)) => {
-                    order = prisma_client
-                        .order()
-                        .update(
-                            crate::prisma::order::id::equals(order.id.clone()),
-                            vec![
-                                crate::prisma::order::refunded::set(true),
-                                crate::prisma::order::amount_refunded::increment(refund.amount),
-                                crate::prisma::order::status::set("refunded".to_string()),
-                            ],
-                        )
-                        .exec()
-                        .await
-                        .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
-                    // let (order, charges, _, _) = crate::utils::load_order_from_db(&prisma_client, &order.id).await?;
-                    let _ = send_refund_webhook(&app, &sub_app, &order, &refund).await;
-                }
-                _ => {
-                    // TODO
-                }
+
+            if let Some(ref order) = order {
+                prisma_client
+                    .order()
+                    .update(
+                        crate::prisma::order::id::equals(order.id.clone()),
+                        vec![
+                            crate::prisma::order::refunded::set(true),
+                            crate::prisma::order::amount_refunded::increment(refund.amount),
+                            crate::prisma::order::status::set("refunded".to_string()),
+                        ],
+                    )
+                    .exec()
+                    .await
+                    .map_err(|e| RefundError::Unexpected(format!("sql error: {:?}", e)))?;
             }
+
+            let _ = send_refund_success_webhook(prisma_client, charge_id, refund_id).await;
         }
         RefundStatus::Fail(error) => {
             refund = prisma_client

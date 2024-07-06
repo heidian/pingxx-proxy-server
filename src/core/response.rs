@@ -136,6 +136,7 @@ pub mod charge {
         pub object: String,
         pub app: String,
         pub channel: String,
+        pub order_no: String,  // 兼容 basic 和 order 的 charge 接口, basic 接口上的商户订单号是 order_no
         pub merchant_order_no: String,
         pub paid: bool,
         pub amount: i32,
@@ -173,6 +174,7 @@ pub mod charge {
                 object: "charge".to_string(),
                 channel: charge.channel,
                 app: app.id.clone(),
+                order_no: charge.merchant_order_no.clone(),
                 merchant_order_no: charge.merchant_order_no,
                 paid: charge.paid,
                 amount: charge.amount,
