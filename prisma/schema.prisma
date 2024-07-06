@@ -149,3 +149,15 @@ model AppWebhookConfig {
 
     @@unique([appId, endpoint])
 }
+
+model AppWebhookHistory {
+    id          String   @id
+    appId       String
+    endpoint    String
+    event       String
+    payload     Json
+    status_code Int
+    response    String
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
