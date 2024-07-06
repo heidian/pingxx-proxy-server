@@ -2,12 +2,7 @@ use crate::core::{ChargeResponse, OrderResponse};
 use serde_json::json;
 
 mod webhook_rsa2 {
-    use openssl::{
-        hash::MessageDigest,
-        pkey::PKey,
-        rsa::Rsa,
-        sign::Signer,
-    };
+    use openssl::{hash::MessageDigest, pkey::PKey, rsa::Rsa, sign::Signer};
 
     pub struct SignError(pub String);
     impl From<openssl::error::ErrorStack> for SignError {
@@ -34,13 +29,14 @@ mod webhook_rsa2 {
 
 async fn request_to_webhook_endpoint(
     app_webhook_url: &str,
+    event_type: &str,
     event_data: &serde_json::Value,
 ) -> Result<(), ()> {
     let event_payload = json!({
         "id": crate::utils::generate_id("evt_"),
         "object": "event",
         "created": chrono::Utc::now().timestamp(),
-        "type": "charge.succeeded",
+        "type": event_type,
         "data": {
             "object": event_data
         },
@@ -96,7 +92,7 @@ pub(super) async fn send_order_charge_webhook(
     let event_data = serde_json::to_value(order_response).map_err(|e| {
         tracing::error!("error serializing order response payload: {:?}", e);
     })?;
-    request_to_webhook_endpoint(app_webhook_url, &event_data).await
+    request_to_webhook_endpoint(app_webhook_url, "order.succeeded", &event_data).await
 }
 
 pub(super) async fn send_basic_charge_webhook(
@@ -110,7 +106,7 @@ pub(super) async fn send_basic_charge_webhook(
         tracing::error!("error serializing charge response payload: {:?}", e);
     })?;
     event_data["order_no"] = event_data["merchant_order_no"].clone();
-    request_to_webhook_endpoint(app_webhook_url, &event_data).await
+    request_to_webhook_endpoint(app_webhook_url, "charge.succeeded", &event_data).await
 }
 
 pub(super) async fn send_refund_webhook(
