@@ -151,13 +151,13 @@ model AppWebhookConfig {
 }
 
 model AppWebhookHistory {
-    id          String   @id
-    appId       String
-    endpoint    String
-    event       String
-    payload     Json
-    status_code Int
-    response    String
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+    id         String   @id
+    appId      String
+    endpoint   String
+    event      String
+    payload    Json
+    statusCode Int
+    response   String
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
 }

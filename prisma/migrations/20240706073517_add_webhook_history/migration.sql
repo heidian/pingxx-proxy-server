@@ -5,7 +5,7 @@ CREATE TABLE `AppWebhookHistory` (
     `endpoint` VARCHAR(191) NOT NULL,
     `event` VARCHAR(191) NOT NULL,
     `payload` JSON NOT NULL,
-    `status_code` INTEGER NOT NULL,
+    `statusCode` INTEGER NOT NULL,
     `response` VARCHAR(191) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
