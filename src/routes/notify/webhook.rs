@@ -98,25 +98,26 @@ pub(super) async fn send_charge_success_webhook(
             .await
             .map_err(|e| WebhookError::Unexpected(e.to_string()))?;
 
-    // TODO: 目前暂时只取第一个
-    let webhook_config = prisma_client
+    let webhook_configs = prisma_client
         .app_webhook_config()
-        .find_first(vec![crate::prisma::app_webhook_config::app_id::equals(
+        .find_many(vec![crate::prisma::app_webhook_config::app_id::equals(
             app.id.clone(),
         )])
         .exec()
         .await
         .map_err(|e| WebhookError::Unexpected(format!("sql error: {:?}", e)))?;
 
-    if let Some(webhook_config) = webhook_config {
-        let (event_type, event_data) = match (order, sub_app) {
+    for webhook_config in webhook_configs {
+        // if let Some(webhook_config) = webhook_config {
+        let webhook_config = webhook_config.clone();
+        let (event_type, event_data) = match (&order, &sub_app) {
             (Some(order), Some(sub_app)) => {
-                let (order, charges, _, _) =
+                let (_, charges, _, _) =
                     crate::utils::load_order_from_db(&prisma_client, &order.id)
                         .await
                         .map_err(|e| WebhookError::Unexpected(e.to_string()))?;
                 let order_response: OrderResponse =
-                    (&order, Some(&charge), &charges, &app, &sub_app).into();
+                    (order, Some(&charge), &charges, &app, sub_app).into();
                 ("order.succeeded", serde_json::to_value(order_response))
             }
             _ => {
