@@ -44,40 +44,30 @@ mod config {
 
     #[derive(Debug, Deserialize)]
     pub struct AlipayPcDirectConfig {
-        pub alipay_pid: String,            // 合作者身份, 账号 ID
-        pub alipay_security_key: String,   // 安全校验码 (Key)
-        pub alipay_account: String,        // 支付宝企业账户（邮箱）
-        pub alipay_version: AlipayApiType, // 1:mapi, 2:openapi
-        #[serde(default)]
-        pub alipay_app_id: String, // 支付宝商户 AppID, alipay_version == 2 时需要
+        pub alipay_pid: String,               // 合作者身份, 账号 ID
+        pub alipay_security_key: String,      // 安全校验码 (Key)
+        pub alipay_account: String,           // 支付宝企业账户（邮箱）
+        pub alipay_version: AlipayApiType,    // 1:mapi, 2:openapi
+        pub alipay_app_id: Option<String>,    // 支付宝商户 AppID, alipay_version == 2 时需要
         pub alipay_sign_type: AlipaySignType, // RSA or RSA2, 现在 mapi 固定用 RSA, openapi 固定用 RSA2
-        #[serde(default)]
-        pub alipay_private_key: String,
-        #[serde(default)]
-        pub alipay_public_key: String,
-        #[serde(default)]
-        pub alipay_private_key_rsa2: String,
-        #[serde(default)]
-        pub alipay_public_key_rsa2: String,
+        pub alipay_private_key: Option<String>,
+        pub alipay_public_key: Option<String>,
+        pub alipay_private_key_rsa2: Option<String>,
+        pub alipay_public_key_rsa2: Option<String>,
     }
 
     #[derive(Debug, Deserialize)]
     pub struct AlipayWapConfig {
-        pub alipay_pid: String,            // 合作者身份, 账号 ID
-        pub alipay_security_key: String,   // 安全校验码 (Key)
-        pub alipay_account: String,        // 支付宝企业账户（邮箱）
-        pub alipay_version: AlipayApiType, // 1:mapi, 2:openapi
-        #[serde(default)]
-        pub alipay_app_id: String, // 支付宝商户 AppID, alipay_version == 2 时需要
+        pub alipay_pid: String,               // 合作者身份, 账号 ID
+        pub alipay_security_key: String,      // 安全校验码 (Key)
+        pub alipay_account: String,           // 支付宝企业账户（邮箱）
+        pub alipay_version: AlipayApiType,    // 1:mapi, 2:openapi
+        pub alipay_app_id: Option<String>,    // 支付宝商户 AppID, alipay_version == 2 时需要
         pub alipay_sign_type: AlipaySignType, // RSA or RSA2, 现在 mapi 固定用 RSA, openapi 固定用 RSA2
-        #[serde(default)]
-        pub alipay_mer_wap_private_key: String,
-        #[serde(default)]
-        pub alipay_wap_public_key: String,
-        #[serde(default)]
-        pub alipay_mer_wap_private_key_rsa2: String,
-        #[serde(default)]
-        pub alipay_wap_public_key_rsa2: String,
+        pub alipay_mer_wap_private_key: Option<String>,
+        pub alipay_wap_public_key: Option<String>,
+        pub alipay_mer_wap_private_key_rsa2: Option<String>,
+        pub alipay_wap_public_key_rsa2: Option<String>,
     }
 }
 

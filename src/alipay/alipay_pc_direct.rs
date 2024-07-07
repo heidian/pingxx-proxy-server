@@ -74,14 +74,22 @@ impl ChannelHandler for AlipayPcDirect {
                     subject,
                     body,
                 )?;
-                mapi_request_payload.sign_rsa(&config.alipay_private_key)?;
+                let private_key = config
+                    .alipay_private_key
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_private_key".to_string()))?;
+                mapi_request_payload.sign_rsa(private_key)?;
                 serde_json::to_value(mapi_request_payload)
             }
             AlipayApiType::OPENAPI => {
+                let alipay_app_id = config
+                    .alipay_app_id
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_app_id".to_string()))?;
                 let mut openapi_request_payload = OpenApiRequestPayload::new(
                     charge_id,
                     "alipay.trade.page.pay",
-                    &config.alipay_app_id,
+                    alipay_app_id,
                     &config.alipay_pid,
                     &return_url,
                     merchant_order_no,
@@ -90,7 +98,11 @@ impl ChannelHandler for AlipayPcDirect {
                     subject,
                     body,
                 )?;
-                openapi_request_payload.sign_rsa2(&config.alipay_private_key_rsa2)?;
+                let private_key = config
+                    .alipay_private_key_rsa2
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_private_key_rsa2".to_string()))?;
+                openapi_request_payload.sign_rsa2(private_key)?;
                 serde_json::to_value(openapi_request_payload)
             }
         };
@@ -105,13 +117,21 @@ impl ChannelHandler for AlipayPcDirect {
         let success = match config.alipay_version {
             AlipayApiType::MAPI => {
                 let notify_payload = MapiNotifyPayload::new(payload)?;
-                notify_payload.verify_rsa_sign(&config.alipay_public_key)?;
+                let public_key = config
+                    .alipay_public_key
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_public_key".to_string()))?;
+                notify_payload.verify_rsa_sign(public_key)?;
                 let trade_status = notify_payload.trade_status;
                 trade_status == "TRADE_SUCCESS" || trade_status == "TRADE_FINISHED"
             }
             AlipayApiType::OPENAPI => {
                 let notify_payload = OpenApiNotifyPayload::new(payload)?;
-                notify_payload.verify_rsa2_sign(&config.alipay_public_key_rsa2)?;
+                let public_key = config
+                    .alipay_public_key_rsa2
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_public_key_rsa2".to_string()))?;
+                notify_payload.verify_rsa2_sign(public_key)?;
                 let trade_status = notify_payload.trade_status;
                 trade_status == "TRADE_SUCCESS" || trade_status == "TRADE_FINISHED"
             }
@@ -147,7 +167,11 @@ impl ChannelHandler for AlipayPcDirect {
                     refund_amount,
                     description,
                 )?;
-                refund_payload.sign_rsa(&config.alipay_private_key)?;
+                let private_key = config
+                    .alipay_private_key
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_private_key".to_string()))?;
+                refund_payload.sign_rsa(private_key)?;
                 // refund_payload.sign_md5(&config.alipay_security_key)?;
                 let refund_url = refund_payload.build_refund_url().await?;
                 let failure_msg = format!("需要打开地址进行下一步退款操作: {}", refund_url);
@@ -159,13 +183,21 @@ impl ChannelHandler for AlipayPcDirect {
                 }
             }
             AlipayApiType::OPENAPI => {
+                let alipay_app_id = config
+                    .alipay_app_id
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_app_id".to_string()))?;
                 let mut refund_payload = OpenApiRefundPayload::new(
-                    &config.alipay_app_id,
+                    alipay_app_id,
                     charge_merchant_order_no,
                     refund_amount,
                     description,
                 )?;
-                refund_payload.sign_rsa2(&config.alipay_private_key_rsa2)?;
+                let private_key = config
+                    .alipay_private_key_rsa2
+                    .as_deref()
+                    .ok_or(AlipayError::InvalidConfig("missing alipay_private_key_rsa2".to_string()))?;
+                refund_payload.sign_rsa2(private_key)?;
                 let refund_response = refund_payload.send_request().await?;
                 let mut result = RefundResult {
                     amount: refund_amount,
