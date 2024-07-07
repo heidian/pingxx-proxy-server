@@ -21,8 +21,6 @@ async fn auth(req: Request, next: Next) -> Result<Response, StatusCode> {
         .get("Authorization")
         .and_then(|header| header.to_str().ok());
 
-    println!("auth_header: {:?}", auth_header);
-
     if let Some(auth_header) = auth_header {
         if auth_header.starts_with("Bearer ") {
             let credential = auth_header.trim_start_matches("Bearer ");
