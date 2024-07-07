@@ -117,7 +117,7 @@ impl MapiRequestPayload {
             service: String::from(service),
             _input_charset: String::from("utf-8"),
             return_url: return_url.to_string(),
-            notify_url: crate::utils::notify_url(charge_id),
+            notify_url: crate::utils::charge_notify_url(charge_id),
             partner: alipay_pid.to_string(),
             out_trade_no: merchant_order_no.to_string(),
             subject: subject.to_string(),

@@ -117,7 +117,7 @@ impl OpenApiRequestPayload {
             version: String::from("1.0"),
             biz_content: biz_content.to_string(),
             return_url: return_url.to_string(),
-            notify_url: crate::utils::notify_url(charge_id),
+            notify_url: crate::utils::charge_notify_url(charge_id),
             channel_url: String::from("https://openapi.alipay.com/gateway.do"),
         };
         Ok(payload)

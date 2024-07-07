@@ -20,6 +20,7 @@ pub mod order {
     pub struct OrderResponse {
         pub id: String,
         pub object: String,
+        pub api_base: String,
         pub created: i32,
         pub app: String,
         pub receipt_app: String,
@@ -76,6 +77,7 @@ pub mod order {
             Self {
                 id: order.id,
                 object: String::from("order"),
+                api_base: crate::utils::api_base(),
                 created: order.created_at.timestamp() as i32,
                 app: app.id.clone(),
                 receipt_app: sub_app.id.clone(),
@@ -134,6 +136,7 @@ pub mod charge {
     pub struct ChargeResponse {
         pub id: String,
         pub object: String,
+        pub api_base: String,
         pub app: String,
         pub channel: String,
         pub order_no: String,  // 兼容 basic 和 order 的 charge 接口, basic 接口上的商户订单号是 order_no
@@ -172,6 +175,7 @@ pub mod charge {
             Self {
                 id: charge.id,
                 object: "charge".to_string(),
+                api_base: crate::utils::api_base(),
                 channel: charge.channel,
                 app: app.id.clone(),
                 order_no: charge.merchant_order_no.clone(),
@@ -202,6 +206,7 @@ pub mod refund {
     pub struct RefundResponse {
         pub id: String,
         pub object: String,
+        pub api_base: String,
         pub amount: i32,
         pub succeed: bool,
         pub status: String,
@@ -221,6 +226,7 @@ pub mod refund {
             Self {
                 id: refund.id,
                 object: "refund".to_string(),
+                api_base: crate::utils::api_base(),
                 amount: charge.amount,
                 succeed: refund.status == "succeeded",
                 status: refund.status,

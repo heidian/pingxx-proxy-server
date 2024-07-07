@@ -1,5 +1,9 @@
 use rand::Rng;
 
+pub fn api_base() -> String {
+    std::env::var("API_BASE").unwrap()
+}
+
 pub fn generate_id(prefix: &str) -> String {
     let timestamp = chrono::Utc::now().timestamp_millis();
     let mut rng = rand::thread_rng();
@@ -7,17 +11,17 @@ pub fn generate_id(prefix: &str) -> String {
     format!("{}{}{}", prefix, timestamp, number)
 }
 
-pub fn notify_url(charge_id: &str) -> String {
-    let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
-    format!("{}/notify/charges/{}", charge_notify_origin, charge_id)
+pub fn charge_notify_url(charge_id: &str) -> String {
+    let api_base = std::env::var("API_BASE").unwrap();
+    format!("{}/notify/charges/{}", api_base, charge_id)
     // "https://notify.pingxx.com/notify/charges/ch_101240601691280343040013";
 }
 
 pub fn refund_notify_url(charge_id: &str, refund_id: &str) -> String {
-    let charge_notify_origin = std::env::var("CHARGE_NOTIFY_ORIGIN").unwrap();
+    let api_base = std::env::var("API_BASE").unwrap();
     format!(
         "{}/notify/charges/{}/refunds/{}",
-        charge_notify_origin, charge_id, refund_id
+        api_base, charge_id, refund_id
     )
 }
 

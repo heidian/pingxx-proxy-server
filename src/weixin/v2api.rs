@@ -168,7 +168,7 @@ impl V2ApiRequestPayload {
             total_fee,
             spbill_create_ip: client_ip.to_string(),
             time_expire,
-            notify_url: crate::utils::notify_url(charge_id),
+            notify_url: crate::utils::charge_notify_url(charge_id),
             trade_type: String::from("JSAPI"),
             openid: open_id.to_string(),
         };
