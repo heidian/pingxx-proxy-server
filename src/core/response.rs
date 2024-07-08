@@ -20,6 +20,7 @@ pub mod order {
     pub struct OrderResponse {
         pub id: String,
         pub object: String,
+        pub livemode: bool,
         pub api_base: String,
         pub created: i32,
         pub app: String,
@@ -77,6 +78,7 @@ pub mod order {
             Self {
                 id: order.id,
                 object: String::from("order"),
+                livemode: true,
                 api_base: crate::utils::api_base(),
                 created: order.created_at.timestamp() as i32,
                 app: app.id.clone(),
@@ -136,6 +138,7 @@ pub mod charge {
     pub struct ChargeResponse {
         pub id: String,
         pub object: String,
+        pub livemode: bool,
         pub api_base: String,
         pub app: String,
         pub channel: String,
@@ -175,6 +178,7 @@ pub mod charge {
             Self {
                 id: charge.id,
                 object: "charge".to_string(),
+                livemode: true,
                 api_base: crate::utils::api_base(),
                 channel: charge.channel,
                 app: app.id.clone(),
@@ -206,6 +210,7 @@ pub mod refund {
     pub struct RefundResponse {
         pub id: String,
         pub object: String,
+        pub livemode: bool,
         pub api_base: String,
         pub amount: i32,
         pub succeed: bool,
@@ -226,6 +231,7 @@ pub mod refund {
             Self {
                 id: refund.id,
                 object: "refund".to_string(),
+                livemode: true,
                 api_base: crate::utils::api_base(),
                 amount: charge.amount,
                 succeed: refund.status == "succeeded",

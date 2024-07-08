@@ -44,6 +44,7 @@ async fn request_to_webhook_endpoint(
     let event_payload = json!({
         "id": event_id,
         "object": "event",
+        "livemode": true,
         "api_base": crate::utils::api_base(),
         "created": event_created,
         "type": event_type,
