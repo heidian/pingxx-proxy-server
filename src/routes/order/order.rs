@@ -14,7 +14,7 @@ pub struct CreateOrderRequestPayload {
     pub subject: String,
     pub body: String,
     pub currency: String,
-    pub time_expire: i32,
+    pub time_expire: Option<i32>,
 }
 
 pub async fn create_order(
@@ -22,6 +22,15 @@ pub async fn create_order(
     req_payload: CreateOrderRequestPayload,
 ) -> Result<OrderResponse, OrderError> {
     let order_id = crate::utils::generate_id("o_");
+
+    let time_expire = match req_payload.time_expire {
+        Some(time_expire) => time_expire,
+        None => {
+            let now = chrono::Utc::now();
+            let time_expire = now + chrono::Duration::days(1);
+            time_expire.timestamp() as i32
+        }
+    };
 
     prisma_client
         .order()
@@ -41,7 +50,7 @@ pub async fn create_order(
             req_payload.subject,
             req_payload.body,
             req_payload.currency,
-            req_payload.time_expire,
+            time_expire,
             json!({}),
             vec![],
         )

@@ -23,7 +23,7 @@ pub struct CreateChargeRequestPayload {
     pub currency: String,
     pub subject: String,
     pub body: String,
-    pub time_expire: i32,
+    pub time_expire: Option<i32>,
     pub extra: ChannelChargeExtra,
 }
 
@@ -56,13 +56,22 @@ pub async fn create_charge(
         }
     };
 
+    let time_expire = match charge_req_payload.time_expire {
+        Some(time_expire) => time_expire,
+        None => {
+            let now = chrono::Utc::now();
+            let time_expire = now + chrono::Duration::days(1);
+            time_expire.timestamp() as i32
+        }
+    };
+
     let credential_object = handler
         .create_credential(&ChannelChargeRequest {
             charge_id: &charge_id,
             charge_amount: charge_req_payload.charge_amount,
             merchant_order_no: &charge_req_payload.merchant_order_no,
             client_ip: &charge_req_payload.client_ip,
-            time_expire: charge_req_payload.time_expire,
+            time_expire,
             subject: &charge_req_payload.subject,
             body: &charge_req_payload.body,
             extra: &charge_req_payload.extra,
@@ -102,7 +111,7 @@ pub async fn create_charge(
             charge_req_payload.currency,
             extra,
             credential,
-            charge_req_payload.time_expire,
+            time_expire,
             vec![],
         )
         .exec()
