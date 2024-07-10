@@ -238,6 +238,7 @@ impl OpenApiRefundPayload {
     pub fn new(
         alipay_app_id: &str,            // 开放平台 ID, 应用 ID
         charge_merchant_order_no: &str, // 商户订单号
+        refund_merchant_order_no: &str, // 退款订单号
         refund_amount: i32,             // 退款金额, 精确到分
         description: &str,              // 退款说明
     ) -> Result<Self, AlipayError> {
@@ -245,6 +246,7 @@ impl OpenApiRefundPayload {
         let biz_content = json!({
             "refund_amount": refund_amount,            // 退款金额，单位为元，支持两位小数
             "out_trade_no": charge_merchant_order_no,  // 支付时的商户订单号
+            "out_request_no": refund_merchant_order_no,// 退款请求号。标识一次退款请求，需要保证在交易号下唯一，如需部分退款，则此参数必传。
             "refund_reason": description,              // 退款说明
         });
         Ok(Self {

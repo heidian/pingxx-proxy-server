@@ -151,6 +151,7 @@ impl ChannelHandler for AlipayPcDirect {
             charge_merchant_order_no,
             refund_id,
             refund_amount,
+            refund_merchant_order_no,
             description,
             // extra,
             ..
@@ -190,6 +191,7 @@ impl ChannelHandler for AlipayPcDirect {
                 let mut refund_payload = OpenApiRefundPayload::new(
                     alipay_app_id,
                     charge_merchant_order_no,
+                    refund_merchant_order_no,
                     refund_amount,
                     description,
                 )?;
