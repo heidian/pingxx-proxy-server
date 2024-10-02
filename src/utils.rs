@@ -25,6 +25,17 @@ pub fn refund_notify_url(charge_id: &str, refund_id: &str) -> String {
     )
 }
 
+pub fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut index = max_bytes;
+    while !s.is_char_boundary(index) {
+        index -= 1;
+    }
+    &s[..index]
+}
+
 mod db {
     use thiserror::Error;
 

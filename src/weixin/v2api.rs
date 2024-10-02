@@ -157,19 +157,14 @@ impl V2ApiRequestPayload {
         let total_fee = format!("{}", charge_amount);
         // create 32 charactors nonce string
         let nonce_str = v2api_md5::generate_nonce_str();
-        let truncated_body = if body.len() > 127 {
-            // &body[0..127] 不能这么写，中文字符中间被截断会报错 byte index 127 is not a char boundary
-            body.chars().take(127).collect()
-        } else {
-            body.to_string()
-        };
+        let truncated_body = crate::utils::truncate_utf8(body, 127);
         let payload = V2ApiRequestPayload {
             appid: wx_pub_app_id.to_string(),
             mch_id: wx_pub_mch_id.to_string(),
             nonce_str,
             sign: String::from(""),
             // sign_type: "MD5",
-            body: truncated_body,
+            body: truncated_body.to_string(),
             out_trade_no: merchant_order_no.to_string(),
             total_fee,
             spbill_create_ip: client_ip.to_string(),
