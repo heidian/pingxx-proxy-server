@@ -157,13 +157,18 @@ impl V2ApiRequestPayload {
         let total_fee = format!("{}", charge_amount);
         // create 32 charactors nonce string
         let nonce_str = v2api_md5::generate_nonce_str();
+        let truncated_body = if body.len() > 127 {
+            &body[0..127]
+        } else {
+            body
+        };
         let payload = V2ApiRequestPayload {
             appid: wx_pub_app_id.to_string(),
             mch_id: wx_pub_mch_id.to_string(),
             nonce_str,
             sign: String::from(""),
             // sign_type: "MD5",
-            body: body.to_string(),
+            body: truncated_body.to_string(),
             out_trade_no: merchant_order_no.to_string(),
             total_fee,
             spbill_create_ip: client_ip.to_string(),
