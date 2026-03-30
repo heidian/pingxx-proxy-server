@@ -47,12 +47,26 @@ pub async fn create_or_update_sub_app_channel(
                     .map_err(|e| format!("invalid alipay_wap params: {:?}", e))?;
             }
             PaymentChannel::WxPub => {
-                serde_json::from_value::<crate::weixin::WxPubConfig>(params)
-                    .map_err(|e| format!("invalid wx_pub params: {:?}", e))?;
+                let probe: crate::weixin::ApiVersionProbe =
+                    serde_json::from_value(params.clone()).unwrap_or(crate::weixin::ApiVersionProbe { api_version: None });
+                if probe.api_version.as_deref() == Some("v3") {
+                    serde_json::from_value::<crate::weixin::WxPubV3Config>(params)
+                        .map_err(|e| format!("invalid wx_pub v3 params: {:?}", e))?;
+                } else {
+                    serde_json::from_value::<crate::weixin::WxPubV2Config>(params)
+                        .map_err(|e| format!("invalid wx_pub params: {:?}", e))?;
+                }
             }
             PaymentChannel::WxLite => {
-                serde_json::from_value::<crate::weixin::WxLiteConfig>(params)
-                    .map_err(|e| format!("invalid wx_lite params: {:?}", e))?;
+                let probe: crate::weixin::ApiVersionProbe =
+                    serde_json::from_value(params.clone()).unwrap_or(crate::weixin::ApiVersionProbe { api_version: None });
+                if probe.api_version.as_deref() == Some("v3") {
+                    serde_json::from_value::<crate::weixin::WxLiteV3Config>(params)
+                        .map_err(|e| format!("invalid wx_lite v3 params: {:?}", e))?;
+                } else {
+                    serde_json::from_value::<crate::weixin::WxLiteV2Config>(params)
+                        .map_err(|e| format!("invalid wx_lite params: {:?}", e))?;
+                }
             }
         };
     }
