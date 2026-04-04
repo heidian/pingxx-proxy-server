@@ -655,6 +655,7 @@ impl V3JsapiRequestPayload {
             .header("Authorization", &authorization)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
+            .header("User-Agent", "pingxx-proxy-server")
             .body(body)
             .send()
             .await
@@ -862,6 +863,7 @@ impl V3RefundRequestPayload {
             .header("Authorization", &authorization)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
+            .header("User-Agent", "pingxx-proxy-server")
             .body(body)
             .send()
             .await
